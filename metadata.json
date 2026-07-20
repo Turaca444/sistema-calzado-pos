@@ -1,0 +1,6 @@
+{
+  "name": "J&Z Indumentaria",
+  "description": "Sistema completo y profesional de venta de ropa y artículos con gestión de stock, base de datos de clientes, control de deudas (cuentas corrientes), historial de compras y API REST interactiva.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

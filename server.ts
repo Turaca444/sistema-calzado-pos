@@ -1,0 +1,969 @@
+import express from "express";
+import fs from "fs";
+import path from "path";
+import { createServer as createViteServer } from "vite";
+import { DBState, Product, Customer, Sale, SaleItem, UnpaidItem, Tenant, User, UserRole } from "./src/types";
+
+const app = express();
+const PORT = 3000;
+const DATA_FILE = path.join(process.cwd(), "data.json");
+
+// Parse JSON bodies
+app.use(express.json());
+
+// Initial seed data for SaaS multi-tenant
+const initialData: DBState = {
+  tenants: [
+    {
+      id: "tenant_jz",
+      name: "J&Z Indumentaria",
+      plan: "Plan Pro",
+      status: "active",
+      paymentGateway: "stripe",
+      monthlyPrice: 35000,
+      nextBillingDate: "2026-08-15"
+    },
+    {
+      id: "tenant_elsol",
+      name: "Calzados El Sol",
+      plan: "Plan Premium",
+      status: "active",
+      paymentGateway: "mercado_pago",
+      monthlyPrice: 25000,
+      nextBillingDate: "2026-08-10"
+    },
+    {
+      id: "tenant_modaexpress",
+      name: "Accesorios ModaExpress",
+      plan: "Plan Básico",
+      status: "suspended",
+      paymentGateway: "mercado_pago",
+      monthlyPrice: 15000,
+      nextBillingDate: "2026-07-01"
+    }
+  ],
+  users: [
+    {
+      id: "user_jz_admin",
+      name: "Admin J&Z",
+      email: "turacam2014@gmail.com",
+      role: "administrador",
+      tenantId: "tenant_jz"
+    },
+    {
+      id: "user_jz_vendedor",
+      name: "Sofía Vendedora",
+      email: "sofia.vende@jz.com",
+      role: "vendedor",
+      tenantId: "tenant_jz"
+    },
+    {
+      id: "user_elsol_admin",
+      name: "Carlos Admin",
+      email: "carlos@elsol.com",
+      role: "administrador",
+      tenantId: "tenant_elsol"
+    },
+    {
+      id: "user_elsol_vendedor",
+      name: "Pedro Vendedor",
+      email: "pedro@elsol.com",
+      role: "vendedor",
+      tenantId: "tenant_elsol"
+    },
+    {
+      id: "user_moda_admin",
+      name: "Ana Admin",
+      email: "ana@moda.com",
+      role: "administrador",
+      tenantId: "tenant_modaexpress"
+    }
+  ],
+  products: [
+    {
+      id: "prod_1",
+      tenantId: "tenant_jz",
+      name: "Remera Básica Negra",
+      category: "Ropa",
+      price: 12000,
+      cost: 5500,
+      stock: 25,
+      minStock: 5
+    },
+    {
+      id: "prod_2",
+      tenantId: "tenant_jz",
+      name: "Jean Slim Blue",
+      category: "Ropa",
+      price: 35000,
+      cost: 16000,
+      stock: 15,
+      minStock: 3
+    },
+    {
+      id: "prod_3",
+      tenantId: "tenant_jz",
+      name: "Campera de Abrigo",
+      category: "Ropa",
+      price: 85000,
+      cost: 39000,
+      stock: 2,
+      minStock: 4
+    },
+    {
+      id: "prod_4",
+      tenantId: "tenant_elsol",
+      name: "Zapatillas Urbanas Blancas",
+      category: "Calzado",
+      price: 45000,
+      cost: 21000,
+      stock: 30,
+      minStock: 5
+    },
+    {
+      id: "prod_5",
+      tenantId: "tenant_elsol",
+      name: "Botas de Cuero Negro",
+      category: "Calzado",
+      price: 75000,
+      cost: 36000,
+      stock: 8,
+      minStock: 2
+    },
+    {
+      id: "prod_6",
+      tenantId: "tenant_elsol",
+      name: "Sandalias Playeras Verano",
+      category: "Calzado",
+      price: 18000,
+      cost: 8000,
+      stock: 1,
+      minStock: 3
+    },
+    {
+      id: "prod_7",
+      tenantId: "tenant_modaexpress",
+      name: "Cinturón de Cuero Marrón",
+      category: "Accesorios",
+      price: 9500,
+      cost: 4000,
+      stock: 12,
+      minStock: 3
+    },
+    {
+      id: "prod_8",
+      tenantId: "tenant_modaexpress",
+      name: "Gorra Trucker Classic",
+      category: "Accesorios",
+      price: 8000,
+      cost: 3500,
+      stock: 20,
+      minStock: 5
+    },
+    {
+      id: "prod_9",
+      tenantId: "tenant_modaexpress",
+      name: "Lentes de Sol Aviador",
+      category: "Accesorios",
+      price: 15000,
+      cost: 7000,
+      stock: 6,
+      minStock: 2
+    }
+  ],
+  customers: [
+    {
+      id: "cust_anonymous_jz",
+      tenantId: "tenant_jz",
+      name: "Consumidor Final",
+      email: "consumidor@final.com",
+      phone: "-",
+      debt: 0,
+      totalBought: 0,
+      debts: [],
+      registeredAt: "2026-01-01T00:00:00.000Z"
+    },
+    {
+      id: "cust_anonymous_elsol",
+      tenantId: "tenant_elsol",
+      name: "Consumidor Final",
+      email: "consumidor@final.com",
+      phone: "-",
+      debt: 0,
+      totalBought: 0,
+      debts: [],
+      registeredAt: "2026-01-01T00:00:00.000Z"
+    },
+    {
+      id: "cust_anonymous_modaexpress",
+      tenantId: "tenant_modaexpress",
+      name: "Consumidor Final",
+      email: "consumidor@final.com",
+      phone: "-",
+      debt: 0,
+      totalBought: 0,
+      debts: [],
+      registeredAt: "2026-01-01T00:00:00.000Z"
+    },
+    {
+      id: "cust_1_jz",
+      tenantId: "tenant_jz",
+      name: "Juan Pérez",
+      email: "juan@perez.com",
+      phone: "1123456789",
+      debt: 0,
+      totalBought: 47000,
+      debts: [],
+      registeredAt: "2026-06-15T12:00:00.000Z"
+    },
+    {
+      id: "cust_2_jz",
+      tenantId: "tenant_jz",
+      name: "María Gómez",
+      email: "maria@gomez.com",
+      phone: "1187654321",
+      debt: 12000,
+      totalBought: 12000,
+      debts: [
+        {
+          saleId: "sale_seeded_1",
+          date: "2026-07-01T15:30:00.000Z",
+          productId: "prod_1",
+          productName: "Remera Básica Negra",
+          quantity: 1,
+          price: 12000,
+          pendingAmount: 12000
+        }
+      ],
+      registeredAt: "2026-07-01T10:00:00.000Z"
+    },
+    {
+      id: "cust_1_elsol",
+      tenantId: "tenant_elsol",
+      name: "Carlos Santana",
+      email: "carlos@santana.com",
+      phone: "261456123",
+      debt: 45000,
+      totalBought: 90000,
+      debts: [
+        {
+          saleId: "sale_seeded_2",
+          date: "2026-07-05T18:00:00.000Z",
+          productId: "prod_4",
+          productName: "Zapatillas Urbanas Blancas",
+          quantity: 1,
+          price: 45000,
+          pendingAmount: 45000
+        }
+      ],
+      registeredAt: "2026-07-05T12:00:00.000Z"
+    }
+  ],
+  sales: [
+    {
+      id: "sale_seeded_1",
+      tenantId: "tenant_jz",
+      date: "2026-07-01T15:30:00.000Z",
+      customerId: "cust_2_jz",
+      customerName: "María Gómez",
+      items: [
+        {
+          productId: "prod_1",
+          productName: "Remera Básica Negra",
+          quantity: 1,
+          price: 12000
+        }
+      ],
+      total: 12000,
+      paymentMethod: "cuenta_corriente",
+      status: "pendiente",
+      debtAmount: 12000,
+      userId: "user_jz_vendedor",
+      userName: "Sofía Vendedora"
+    },
+    {
+      id: "sale_seeded_2",
+      tenantId: "tenant_elsol",
+      date: "2026-07-05T18:00:00.000Z",
+      customerId: "cust_1_elsol",
+      customerName: "Carlos Santana",
+      items: [
+        {
+          productId: "prod_4",
+          productName: "Zapatillas Urbanas Blancas",
+          quantity: 1,
+          price: 45000
+        }
+      ],
+      total: 45000,
+      paymentMethod: "cuenta_corriente",
+      status: "pendiente",
+      debtAmount: 45000,
+      userId: "user_elsol_vendedor",
+      userName: "Pedro Vendedor"
+    },
+    {
+      id: "sale_seeded_3",
+      tenantId: "tenant_jz",
+      date: "2026-07-10T11:20:00.000Z",
+      customerId: "cust_1_jz",
+      customerName: "Juan Pérez",
+      items: [
+        {
+          productId: "prod_2",
+          productName: "Jean Slim Blue",
+          quantity: 1,
+          price: 35000
+        }
+      ],
+      total: 35000,
+      paymentMethod: "transferencia",
+      status: "pagado",
+      debtAmount: 0,
+      userId: "user_jz_admin",
+      userName: "Admin J&Z"
+    }
+  ]
+};
+
+// Helper to read database
+function readDB(): DBState {
+  try {
+    if (!fs.existsSync(DATA_FILE)) {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2), "utf-8");
+      return initialData;
+    }
+    const raw = fs.readFileSync(DATA_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    
+    // Schema Upgrade check for Multi-Tenant SaaS
+    if (!parsed.tenants || parsed.tenants.length === 0) {
+      console.log("[SaaS Upgrade] Migrando base de datos local para soporte multi-inquilino...");
+      fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2), "utf-8");
+      return initialData;
+    }
+    return parsed;
+  } catch (error) {
+    console.error("Error al leer la base de datos:", error);
+    return initialData;
+  }
+}
+
+// Helper to write database
+function writeDB(data: DBState) {
+  try {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf-8");
+  } catch (error) {
+    console.error("Error al escribir en la base de datos:", error);
+  }
+}
+
+// ==================== SAAS MIDDLEWARE ====================
+
+// Middleware to authorize and isolate tenant requests, and enforce subscription paywalls
+app.use("/api", (req, res, next) => {
+  // Allow system/tenant listing, billing simulator, and toggle endpoints to execute freely
+  if (req.path.startsWith("/tenants")) {
+    return next();
+  }
+  
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const db = readDB();
+  const tenant = db.tenants.find(t => t.id === tenantId);
+  
+  if (!tenant) {
+    return res.status(404).json({ error: `Comercio (Tenant) '${tenantId}' no registrado en el sistema SaaS.` });
+  }
+
+  // If subscription status is suspended, block access with 402 Payment Required!
+  if (tenant.status === "suspended") {
+    return res.status(402).json({
+      error: `Acceso Bloqueado: La suscripción de '${tenant.name}' se encuentra suspendida por falta de pago.`,
+      tenantId: tenant.id,
+      tenantName: tenant.name,
+      plan: tenant.plan,
+      monthlyPrice: tenant.monthlyPrice,
+      paymentGateway: tenant.paymentGateway,
+      suspended: true
+    });
+  }
+  
+  next();
+});
+
+// ==================== TENANTS API (Billing, SaaS Management) ====================
+
+// GET: List all tenants (used by tenant switcher and overview panels)
+app.get("/api/tenants", (req, res) => {
+  const db = readDB();
+  res.json(db.tenants);
+});
+
+// POST: Toggle Tenant Status (Utility for live testing)
+app.post("/api/tenants/:id/toggle-status", (req, res) => {
+  const db = readDB();
+  const { id } = req.params;
+  const tIdx = db.tenants.findIndex(t => t.id === id);
+  if (tIdx === -1) {
+    return res.status(404).json({ error: "Comercio no encontrado" });
+  }
+
+  const currentStatus = db.tenants[tIdx].status;
+  db.tenants[tIdx].status = currentStatus === "active" ? "suspended" : "active";
+  if (db.tenants[tIdx].status === "active") {
+    db.tenants[tIdx].nextBillingDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  }
+  
+  writeDB(db);
+  res.json({
+    message: `Estado de '${db.tenants[tIdx].name}' cambiado a '${db.tenants[tIdx].status}' con éxito.`,
+    tenant: db.tenants[tIdx]
+  });
+});
+
+// POST: Simulate Payment via Mercado Pago or Stripe (Auto-unlocks tenant)
+app.post("/api/tenants/:id/pay", (req, res) => {
+  const db = readDB();
+  const { id } = req.params;
+  const { cardName, cardNumber, gateway } = req.body;
+
+  const tIdx = db.tenants.findIndex(t => t.id === id);
+  if (tIdx === -1) {
+    return res.status(404).json({ error: "Comercio no encontrado" });
+  }
+
+  // Update tenant status to active
+  db.tenants[tIdx].status = "active";
+  db.tenants[tIdx].nextBillingDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  if (gateway) {
+    db.tenants[tIdx].paymentGateway = gateway;
+  }
+
+  writeDB(db);
+  res.json({
+    message: `¡Pago de suscripción procesado correctamente! Licencia reactivada para '${db.tenants[tIdx].name}'.`,
+    tenant: db.tenants[tIdx],
+    transactionId: `tx_${Date.now()}`,
+    amount: db.tenants[tIdx].monthlyPrice
+  });
+});
+
+// ==================== PRODUCTS API (Tenant Isolated) ====================
+
+// GET: All Products (Filtered by Tenant)
+app.get("/api/products", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const filtered = db.products.filter(p => p.tenantId === tenantId);
+  res.json(filtered);
+});
+
+// POST: Create Product (Scoped to Tenant)
+app.post("/api/products", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { name, category, price, cost, stock, minStock } = req.body;
+
+  if (!name || !category || price === undefined || stock === undefined) {
+    return res.status(400).json({ error: "Faltan campos obligatorios (nombre, categoría, precio, stock)" });
+  }
+
+  const newProduct: Product = {
+    id: `prod_${Date.now()}`,
+    tenantId,
+    name,
+    category,
+    price: Number(price),
+    cost: cost !== undefined ? Number(cost) : Math.round(Number(price) * 0.5),
+    stock: Number(stock),
+    minStock: minStock !== undefined ? Number(minStock) : 5
+  };
+
+  db.products.push(newProduct);
+  writeDB(db);
+  res.status(201).json(newProduct);
+});
+
+// PUT: Update Product (Scoped to Tenant)
+app.put("/api/products/:id", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { id } = req.params;
+  const { name, category, price, cost, stock, minStock } = req.body;
+
+  const prodIdx = db.products.findIndex(p => p.id === id && p.tenantId === tenantId);
+  if (prodIdx === -1) {
+    return res.status(404).json({ error: "Producto no encontrado o no pertenece a su comercio" });
+  }
+
+  const updatedProduct = {
+    ...db.products[prodIdx],
+    ...(name !== undefined && { name }),
+    ...(category !== undefined && { category }),
+    ...(price !== undefined && { price: Number(price) }),
+    ...(cost !== undefined && { cost: Number(cost) }),
+    ...(stock !== undefined && { stock: Number(stock) }),
+    ...(minStock !== undefined && { minStock: Number(minStock) })
+  };
+
+  db.products[prodIdx] = updatedProduct;
+  writeDB(db);
+  res.json(updatedProduct);
+});
+
+// DELETE: Delete Product (Role and Tenant Scoped)
+app.delete("/api/products/:id", (req, res) => {
+  const userRole = (req.headers["x-user-role"] as string) || "administrador";
+  if (userRole === "vendedor") {
+    return res.status(403).json({ error: "Permisos Insuficientes: El rol 'Vendedor' no tiene permisos para eliminar artículos. Requiere rol de 'Administrador'." });
+  }
+
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { id } = req.params;
+
+  const prodIdx = db.products.findIndex(p => p.id === id && p.tenantId === tenantId);
+  if (prodIdx === -1) {
+    return res.status(404).json({ error: "Producto no encontrado o no pertenece a su comercio" });
+  }
+
+  db.products.splice(prodIdx, 1);
+  writeDB(db);
+  res.json({ message: "Producto eliminado con éxito", id });
+});
+
+// ==================== CUSTOMERS API (Tenant Isolated) ====================
+
+// GET: All Customers (Filtered by Tenant)
+app.get("/api/customers", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const filtered = db.customers.filter(c => c.tenantId === tenantId);
+  res.json(filtered);
+});
+
+// POST: Create Customer (Scoped to Tenant)
+app.post("/api/customers", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { name, email, phone } = req.body;
+
+  if (!name) {
+    return res.status(400).json({ error: "El nombre es obligatorio" });
+  }
+
+  const newCustomer: Customer = {
+    id: `cust_${Date.now()}`,
+    tenantId,
+    name,
+    email: email || "",
+    phone: phone || "",
+    debt: 0,
+    totalBought: 0,
+    debts: [],
+    registeredAt: new Date().toISOString()
+  };
+
+  db.customers.push(newCustomer);
+  writeDB(db);
+  res.status(201).json(newCustomer);
+});
+
+// PUT: Update Customer (Scoped to Tenant)
+app.put("/api/customers/:id", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { id } = req.params;
+  const { name, email, phone } = req.body;
+
+  const custIdx = db.customers.findIndex(c => c.id === id && c.tenantId === tenantId);
+  if (custIdx === -1) {
+    return res.status(404).json({ error: "Cliente no encontrado o no pertenece a su comercio" });
+  }
+
+  const updatedCustomer = {
+    ...db.customers[custIdx],
+    ...(name !== undefined && { name }),
+    ...(email !== undefined && { email }),
+    ...(phone !== undefined && { phone })
+  };
+
+  db.customers[custIdx] = updatedCustomer;
+  writeDB(db);
+  res.json(updatedCustomer);
+});
+
+// POST: Register payment of debt for a customer (Scoped to Tenant)
+app.post("/api/customers/:id/pay-debt", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { id } = req.params;
+  const { amount } = req.body;
+
+  if (amount === undefined || Number(amount) <= 0) {
+    return res.status(400).json({ error: "Debe ingresar un monto válido y mayor a cero" });
+  }
+
+  const custIdx = db.customers.findIndex(c => c.id === id && c.tenantId === tenantId);
+  if (custIdx === -1) {
+    return res.status(404).json({ error: "Cliente no encontrado o no pertenece a su comercio" });
+  }
+
+  const customer = db.customers[custIdx];
+  let amountToPay = Number(amount);
+  
+  if (customer.debt <= 0) {
+    return res.status(400).json({ error: "Este cliente no tiene deudas pendientes" });
+  }
+
+  const actualPaid = Math.min(amountToPay, customer.debt);
+  customer.debt -= actualPaid;
+  amountToPay = actualPaid;
+
+  // Reduce specific item debts in order (oldest first)
+  customer.debts = customer.debts.map(d => {
+    if (amountToPay <= 0) return d;
+    if (d.pendingAmount <= amountToPay) {
+      amountToPay -= d.pendingAmount;
+      return { ...d, pendingAmount: 0 };
+    } else {
+      const remaining = d.pendingAmount - amountToPay;
+      amountToPay = 0;
+      return { ...d, pendingAmount: remaining };
+    }
+  }).filter(d => d.pendingAmount > 0);
+
+  // Update corresponding sales statuses for this tenant
+  db.sales = db.sales.map(s => {
+    if (s.tenantId === tenantId && s.customerId === id && s.paymentMethod === "cuenta_corriente" && s.status !== "pagado") {
+      const remainingSaleDebts = customer.debts.filter(d => d.saleId === s.id);
+      if (remainingSaleDebts.length === 0) {
+        return { ...s, status: "pagado" as const };
+      } else {
+        const currentUnpaidAmount = remainingSaleDebts.reduce((acc, d) => acc + d.pendingAmount, 0);
+        if (currentUnpaidAmount < s.debtAmount) {
+          return { ...s, status: "parcialmente_pagado" as const };
+        }
+      }
+    }
+    return s;
+  });
+
+  writeDB(db);
+  res.json({
+    message: `Pago de $${actualPaid} registrado con éxito`,
+    customer
+  });
+});
+
+// DELETE: Delete Customer (Role and Tenant Scoped)
+app.delete("/api/customers/:id", (req, res) => {
+  const userRole = (req.headers["x-user-role"] as string) || "administrador";
+  if (userRole === "vendedor") {
+    return res.status(403).json({ error: "Permisos Insuficientes: El rol 'Vendedor' no tiene permisos para eliminar clientes. Requiere rol de 'Administrador'." });
+  }
+
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { id } = req.params;
+
+  const custIdx = db.customers.findIndex(c => c.id === id && c.tenantId === tenantId);
+  if (custIdx === -1) {
+    return res.status(404).json({ error: "Cliente no encontrado o no pertenece a su comercio" });
+  }
+
+  db.customers.splice(custIdx, 1);
+  writeDB(db);
+  res.json({ message: "Cliente eliminado con éxito", id });
+});
+
+// ==================== SALES API (Tenant Isolated) ====================
+
+// GET: All Sales History (Filtered by Tenant)
+app.get("/api/sales", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const filtered = db.sales.filter(s => s.tenantId === tenantId);
+  res.json(filtered);
+});
+
+// POST: Perform a Sale (Scoped to Tenant)
+app.post("/api/sales", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { customerId, items, paymentMethod } = req.body;
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: "Debe incluir al menos un producto en la venta" });
+  }
+
+  if (!paymentMethod || !["contado", "transferencia", "cuenta_corriente"].includes(paymentMethod)) {
+    return res.status(400).json({ error: "Método de pago inválido" });
+  }
+
+  // Find customer of this tenant or default to anonymous customer
+  const defaultAnonId = `cust_anonymous_${tenantId}`;
+  const targetCustId = customerId || defaultAnonId;
+  const custIdx = db.customers.findIndex(c => c.id === targetCustId && c.tenantId === tenantId);
+  
+  if (custIdx === -1) {
+    return res.status(404).json({ error: "Cliente no encontrado o no pertenece a su comercio" });
+  }
+  const customer = db.customers[custIdx];
+
+  // Prevent anonymous customers from using debt/cuenta corriente
+  if (customer.id.startsWith("cust_anonymous") && paymentMethod === "cuenta_corriente") {
+    return res.status(400).json({ error: "El Consumidor Final no puede comprar a Cuenta Corriente (fiado)" });
+  }
+
+  // Validate Stock and fetch product details (must belong to this tenant)
+  const saleItems: SaleItem[] = [];
+  let saleTotal = 0;
+  const dbUpdates: { prodIdx: number; newStock: number }[] = [];
+
+  for (const item of items) {
+    const { productId, quantity } = item;
+    if (!productId || quantity === undefined || Number(quantity) <= 0) {
+      return res.status(400).json({ error: "Cada item debe tener un código de producto y cantidad mayor a cero" });
+    }
+
+    const prodIdx = db.products.findIndex(p => p.id === productId && p.tenantId === tenantId);
+    if (prodIdx === -1) {
+      return res.status(404).json({ error: `Producto con ID ${productId} no existe en su comercio` });
+    }
+
+    const product = db.products[prodIdx];
+    const qty = Number(quantity);
+
+    if (product.stock < qty) {
+      return res.status(400).json({
+        error: `Stock insuficiente para '${product.name}'. Solicitado: ${qty}, Disponible: ${product.stock}`
+      });
+    }
+
+    saleTotal += product.price * qty;
+    saleItems.push({
+      productId: product.id,
+      productName: product.name,
+      quantity: qty,
+      price: product.price
+    });
+
+    dbUpdates.push({
+      prodIdx,
+      newStock: product.stock - qty
+    });
+  }
+
+  // Process transaction
+  const saleId = `sale_${Date.now()}`;
+  const isDebt = paymentMethod === "cuenta_corriente";
+
+  const userId = (req.headers["x-user-id"] as string) || "";
+  let userName = (req.headers["x-user-name"] as string) || "";
+  if (userId) {
+    const userObj = db.users.find(u => u.id === userId && u.tenantId === tenantId);
+    if (userObj) {
+      userName = userObj.name;
+    }
+  }
+  if (!userName) {
+    userName = "Vendedor General";
+  }
+  
+  const newSale: Sale = {
+    id: saleId,
+    tenantId,
+    date: new Date().toISOString(),
+    customerId: customer.id,
+    customerName: customer.name,
+    items: saleItems,
+    total: saleTotal,
+    paymentMethod,
+    status: isDebt ? "pendiente" : "pagado",
+    debtAmount: isDebt ? saleTotal : 0,
+    userId: userId || undefined,
+    userName: userName
+  };
+
+  // 1. Subtract product stock
+  for (const update of dbUpdates) {
+    db.products[update.prodIdx].stock = update.newStock;
+  }
+
+  // 2. Update customer statistics
+  customer.totalBought += saleTotal;
+  if (isDebt) {
+    customer.debt += saleTotal;
+    for (const item of saleItems) {
+      customer.debts.push({
+        saleId,
+        date: newSale.date,
+        productId: item.productId,
+        productName: item.productName,
+        quantity: item.quantity,
+        price: item.price,
+        pendingAmount: item.price * item.quantity
+      });
+    }
+  }
+
+  // Save everything
+  db.sales.unshift(newSale);
+  writeDB(db);
+
+  res.status(201).json({
+    message: "Venta realizada con éxito",
+    sale: newSale,
+    customerDebt: customer.debt,
+    total: saleTotal
+  });
+});
+
+// DELETE: Delete a transaction from history (Role and Tenant Scoped)
+app.delete("/api/sales/:id", (req, res) => {
+  const userRole = (req.headers["x-user-role"] as string) || "administrador";
+  if (userRole === "vendedor") {
+    return res.status(403).json({ error: "Permisos Insuficientes: El rol 'Vendedor' no tiene permisos para eliminar registros de ventas. Requiere rol de 'Administrador'." });
+  }
+
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { id } = req.params;
+
+  const saleIndex = db.sales.findIndex(s => s.id === id && s.tenantId === tenantId);
+  if (saleIndex === -1) {
+    return res.status(404).json({ error: "Transacción no encontrada o no pertenece a su comercio" });
+  }
+
+  const sale = db.sales[saleIndex];
+
+  // Adjust customer stats if the customer exists and belongs to this tenant
+  const custIdx = db.customers.findIndex(c => c.id === sale.customerId && c.tenantId === tenantId);
+  if (custIdx !== -1) {
+    const customer = db.customers[custIdx];
+    customer.totalBought = Math.max(0, customer.totalBought - sale.total);
+    
+    if (sale.paymentMethod === "cuenta_corriente") {
+      const unpaidForThisSale = customer.debts
+        .filter(d => d.saleId === id)
+        .reduce((sum, d) => sum + d.pendingAmount, 0);
+      
+      customer.debt = Math.max(0, customer.debt - unpaidForThisSale);
+      customer.debts = customer.debts.filter(d => d.saleId !== id);
+    }
+  }
+
+  db.sales.splice(saleIndex, 1);
+  writeDB(db);
+  res.json({ message: "Transacción eliminada con éxito", id });
+});
+
+// ==================== USERS API (Tenant Isolated) ====================
+
+// GET: All Users (Filtered by Tenant)
+app.get("/api/users", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const filtered = db.users.filter(u => u.tenantId === tenantId);
+  res.json(filtered);
+});
+
+// POST: Create/Add User (Scoped to Tenant)
+app.post("/api/users", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { name, email, role } = req.body;
+
+  if (!name || !role) {
+    return res.status(400).json({ error: "El nombre y el rol son obligatorios" });
+  }
+
+  const newUser: User = {
+    id: `user_${Date.now()}`,
+    tenantId,
+    name,
+    email: email || `${name.toLowerCase().replace(/\s+/g, ".")}@comercio.com`,
+    role: role as UserRole
+  };
+
+  db.users.push(newUser);
+  writeDB(db);
+  res.status(201).json(newUser);
+});
+
+// PUT: Update User (Scoped to Tenant)
+app.put("/api/users/:id", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { id } = req.params;
+  const { name, email, role } = req.body;
+
+  const userIdx = db.users.findIndex(u => u.id === id && u.tenantId === tenantId);
+  if (userIdx === -1) {
+    return res.status(404).json({ error: "Usuario no encontrado o no pertenece a su comercio" });
+  }
+
+  const updatedUser = {
+    ...db.users[userIdx],
+    ...(name !== undefined && { name }),
+    ...(email !== undefined && { email }),
+    ...(role !== undefined && { role: role as UserRole })
+  };
+
+  db.users[userIdx] = updatedUser;
+  writeDB(db);
+  res.json(updatedUser);
+});
+
+// DELETE: Delete User (Scoped to Tenant & Role-Protected)
+app.delete("/api/users/:id", (req, res) => {
+  const userRole = (req.headers["x-user-role"] as string) || "administrador";
+  if (userRole === "vendedor") {
+    return res.status(403).json({ error: "Permisos Insuficientes: El rol 'Vendedor' no puede eliminar usuarios." });
+  }
+
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { id } = req.params;
+
+  const userIdx = db.users.findIndex(u => u.id === id && u.tenantId === tenantId);
+  if (userIdx === -1) {
+    return res.status(404).json({ error: "Usuario no encontrado o no pertenece a su comercio" });
+  }
+
+  // Prevent deleting the last administrator
+  const tenantAdmins = db.users.filter(u => u.tenantId === tenantId && u.role === "administrador");
+  if (db.users[userIdx].role === "administrador" && tenantAdmins.length <= 1) {
+    return res.status(400).json({ error: "Operación Denegada: Debe existir al menos un administrador en el comercio." });
+  }
+
+  db.users.splice(userIdx, 1);
+  writeDB(db);
+  res.json({ message: "Usuario de comercio eliminado con éxito", id });
+});
+
+// ========================================================
+
+// Vite and static file serving configuration
+async function startServer() {
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), "dist");
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+  }
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[SaaS Express] Servidor ejecutándose en el puerto http://localhost:${PORT}`);
+  });
+}
+
+startServer();
