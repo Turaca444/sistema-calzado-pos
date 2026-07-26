@@ -6,7 +6,8 @@ import Customers from "./components/Customers";
 import SalesNew from "./components/SalesNew";
 import History from "./components/History";
 import APIDocs from "./components/APIDocs";
-import { Product, Customer, Sale, Tenant, UserRole, User } from "./types";
+import Login from "./components/Login";
+import { Product, Customer, Sale, Tenant, UserRole, User, LoginLog } from "./types";
 import { 
   CreditCard, 
   Lock, 
@@ -20,6 +21,9 @@ import { motion } from "motion/react";
 
 export default function App() {
   const [currentView, setView] = useState<string>("dashboard");
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    return localStorage.getItem("saas_is_logged_in") === "true";
+  });
   
   // Data States
   const [products, setProducts] = useState<Product[]>([]);
@@ -36,9 +40,90 @@ export default function App() {
   
   // User/Seller management states
   const [users, setUsers] = useState<User[]>([]);
+  const [loginLogs, setLoginLogs] = useState<LoginLog[]>([]);
   const [activeUserId, setActiveUserId] = useState<string>(() => {
     return localStorage.getItem("saas_active_user_id") || "";
   });
+
+  const handleLogin = async (
+    tenantId: string, 
+    role: UserRole, 
+    userId: string, 
+    userName?: string, 
+    userEmail?: string
+  ) => {
+    setActiveTenantId(tenantId);
+    localStorage.setItem("saas_tenant_id", tenantId);
+    
+    setActiveRole(role);
+    localStorage.setItem("saas_user_role", role);
+    
+    if (userId) {
+      setActiveUserId(userId);
+      localStorage.setItem("saas_active_user_id", userId);
+    }
+    
+    setIsLoggedIn(true);
+    localStorage.setItem("saas_is_logged_in", "true");
+    setView("dashboard");
+
+    // Post new login audit log with current date and time
+    try {
+      const payload = {
+        userId: userId || `user_${Date.now()}`,
+        userName: userName || (role === "administrador" ? "Administrador General" : "Vendedor de Caja"),
+        userEmail: userEmail || (role === "administrador" ? "admin@comercio.com" : "vendedor@comercio.com"),
+        role,
+        tenantId,
+        deviceInfo: "Navegador Web (" + (navigator.userAgent.includes("Mobile") ? "Móvil" : "PC") + ")"
+      };
+
+      const res = await fetch("/api/login-logs", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-tenant-id": tenantId
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const newLog: LoginLog = await res.json();
+        setLoginLogs((prev) => [newLog, ...prev]);
+      }
+    } catch (err) {
+      console.error("Error al registrar ingreso de usuario:", err);
+    }
+  };
+
+  const handleClearLoginLogs = async () => {
+    setLoginLogs([]);
+    try {
+      await fetch("/api/login-logs", {
+        method: "DELETE",
+        headers: { "x-tenant-id": activeTenantId }
+      });
+    } catch (err) {
+      console.error("Error al vaciar registro de ingresos:", err);
+    }
+  };
+
+  const handleDeleteSingleLog = async (id: string) => {
+    setLoginLogs((prev) => prev.filter((l) => l.id !== id));
+    try {
+      await fetch(`/api/login-logs/${id}`, {
+        method: "DELETE",
+        headers: { "x-tenant-id": activeTenantId }
+      });
+    } catch (err) {
+      console.error("Error al eliminar registro de ingreso individual:", err);
+    }
+  };
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    localStorage.setItem("saas_is_logged_in", "false");
+  };
   
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [activeTenant, setActiveTenant] = useState<Tenant | null>(null);
@@ -120,6 +205,20 @@ export default function App() {
     }
   };
 
+  // Load SaaS tenant login history logs
+  const fetchLoginLogs = async () => {
+    try {
+      const headers = { "x-tenant-id": activeTenantId };
+      const res = await fetch("/api/login-logs", { headers });
+      if (res.ok) {
+        const data: LoginLog[] = await res.json();
+        setLoginLogs(data);
+      }
+    } catch (err) {
+      console.error("Error al cargar historial de ingresos:", err);
+    }
+  };
+
   // Main data fetch, applying headers to isolate data and intercepting 402 subscription suspensions
   const fetchData = async () => {
     setBillingError(null);
@@ -153,7 +252,7 @@ export default function App() {
         setSales(salesData);
       }
 
-      await fetchUsers();
+      await Promise.all([fetchUsers(), fetchLoginLogs()]);
     } catch (err) {
       console.error("Error al sincronizar datos:", err);
     }
@@ -268,6 +367,30 @@ export default function App() {
       }
     } catch (err) {
       console.error("Error al cambiar estado de comercio:", err);
+    }
+  };
+
+  // Update Tenant Name handler
+  const handleUpdateTenantName = async (tenantId: string, newName: string) => {
+    if (!newName || !newName.trim()) return;
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName.trim() })
+      });
+      if (res.ok) {
+        const updated: Tenant = await res.json();
+        setTenants((prev) => prev.map((t) => (t.id === tenantId ? updated : t)));
+        if (tenantId === activeTenantId) {
+          setActiveTenant(updated);
+        }
+      } else {
+        const err = await res.json();
+        alert(err.error || "Error al actualizar el nombre del comercio");
+      }
+    } catch (err) {
+      console.error("Error al actualizar el nombre del comercio:", err);
     }
   };
 
@@ -514,6 +637,17 @@ export default function App() {
     }
   };
 
+  if (!isLoggedIn) {
+    return (
+      <Login
+        tenants={tenants}
+        users={users}
+        onLogin={handleLogin}
+        initialTenantId={activeTenantId}
+      />
+    );
+  }
+
   return (
     <Layout 
       currentView={currentView} 
@@ -526,12 +660,17 @@ export default function App() {
       onTenantChange={handleTenantChange}
       onRoleChange={handleRoleChange}
       onToggleTenantStatus={handleToggleTenantStatus}
+      onUpdateTenantName={handleUpdateTenantName}
       users={users}
       activeUserId={activeUserId}
       onUserChange={handleUserChange}
       onAddUser={handleAddUser}
       onUpdateUser={handleUpdateUser}
       onDeleteUser={handleDeleteUser}
+      onLogout={handleLogout}
+      loginLogs={loginLogs}
+      onClearLoginLogs={handleClearLoginLogs}
+      onDeleteSingleLog={handleDeleteSingleLog}
     >
       {/* If Tenant subscription is suspended, display the beautiful paywall lockout block */}
       {billingError ? (

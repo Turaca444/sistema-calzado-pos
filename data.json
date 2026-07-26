@@ -1,8 +1,166 @@
 {
-  "products": [],
+  "tenants": [
+    {
+      "id": "tenant_jz",
+      "name": "JM Software",
+      "plan": "Plan Pro",
+      "status": "active",
+      "paymentGateway": "stripe",
+      "monthlyPrice": 35000,
+      "nextBillingDate": "2026-08-15"
+    },
+    {
+      "id": "tenant_elsol",
+      "name": "Calzados El Sol",
+      "plan": "Plan Premium",
+      "status": "active",
+      "paymentGateway": "mercado_pago",
+      "monthlyPrice": 25000,
+      "nextBillingDate": "2026-08-10"
+    },
+    {
+      "id": "tenant_modaexpress",
+      "name": "Accesorios ModaExpress",
+      "plan": "Plan Básico",
+      "status": "suspended",
+      "paymentGateway": "mercado_pago",
+      "monthlyPrice": 15000,
+      "nextBillingDate": "2026-07-01"
+    }
+  ],
+  "users": [
+    {
+      "id": "user_jz_admin",
+      "name": "Admin J&Z",
+      "email": "turacam2014@gmail.com",
+      "role": "administrador",
+      "tenantId": "tenant_jz"
+    },
+    {
+      "id": "user_jz_vendedor",
+      "name": "Sofía Vendedora",
+      "email": "sofia.vende@jz.com",
+      "role": "vendedor",
+      "tenantId": "tenant_jz"
+    },
+    {
+      "id": "user_elsol_admin",
+      "name": "Carlos Admin",
+      "email": "carlos@elsol.com",
+      "role": "administrador",
+      "tenantId": "tenant_elsol"
+    },
+    {
+      "id": "user_elsol_vendedor",
+      "name": "Pedro Vendedor",
+      "email": "pedro@elsol.com",
+      "role": "vendedor",
+      "tenantId": "tenant_elsol"
+    },
+    {
+      "id": "user_moda_admin",
+      "name": "Ana Admin",
+      "email": "ana@moda.com",
+      "role": "administrador",
+      "tenantId": "tenant_modaexpress"
+    }
+  ],
+  "products": [
+    {
+      "id": "prod_1",
+      "tenantId": "tenant_jz",
+      "name": "Remera Básica Negra",
+      "category": "Ropa",
+      "price": 12000,
+      "cost": 5500,
+      "stock": 25,
+      "minStock": 5
+    },
+    {
+      "id": "prod_2",
+      "tenantId": "tenant_jz",
+      "name": "Jean Slim Blue",
+      "category": "Ropa",
+      "price": 35000,
+      "cost": 16000,
+      "stock": 15,
+      "minStock": 3
+    },
+    {
+      "id": "prod_3",
+      "tenantId": "tenant_jz",
+      "name": "Campera de Abrigo",
+      "category": "Ropa",
+      "price": 85000,
+      "cost": 39000,
+      "stock": 2,
+      "minStock": 4
+    },
+    {
+      "id": "prod_4",
+      "tenantId": "tenant_elsol",
+      "name": "Zapatillas Urbanas Blancas",
+      "category": "Calzado",
+      "price": 45000,
+      "cost": 21000,
+      "stock": 30,
+      "minStock": 5
+    },
+    {
+      "id": "prod_5",
+      "tenantId": "tenant_elsol",
+      "name": "Botas de Cuero Negro",
+      "category": "Calzado",
+      "price": 75000,
+      "cost": 36000,
+      "stock": 8,
+      "minStock": 2
+    },
+    {
+      "id": "prod_6",
+      "tenantId": "tenant_elsol",
+      "name": "Sandalias Playeras Verano",
+      "category": "Calzado",
+      "price": 18000,
+      "cost": 8000,
+      "stock": 1,
+      "minStock": 3
+    },
+    {
+      "id": "prod_7",
+      "tenantId": "tenant_modaexpress",
+      "name": "Cinturón de Cuero Marrón",
+      "category": "Accesorios",
+      "price": 9500,
+      "cost": 4000,
+      "stock": 12,
+      "minStock": 3
+    },
+    {
+      "id": "prod_8",
+      "tenantId": "tenant_modaexpress",
+      "name": "Gorra Trucker Classic",
+      "category": "Accesorios",
+      "price": 8000,
+      "cost": 3500,
+      "stock": 20,
+      "minStock": 5
+    },
+    {
+      "id": "prod_9",
+      "tenantId": "tenant_modaexpress",
+      "name": "Lentes de Sol Aviador",
+      "category": "Accesorios",
+      "price": 15000,
+      "cost": 7000,
+      "stock": 6,
+      "minStock": 2
+    }
+  ],
   "customers": [
     {
-      "id": "cust_anonymous",
+      "id": "cust_anonymous_jz",
+      "tenantId": "tenant_jz",
       "name": "Consumidor Final",
       "email": "consumidor@final.com",
       "phone": "-",
@@ -10,7 +168,170 @@
       "totalBought": 0,
       "debts": [],
       "registeredAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cust_anonymous_elsol",
+      "tenantId": "tenant_elsol",
+      "name": "Consumidor Final",
+      "email": "consumidor@final.com",
+      "phone": "-",
+      "debt": 0,
+      "totalBought": 0,
+      "debts": [],
+      "registeredAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cust_anonymous_modaexpress",
+      "tenantId": "tenant_modaexpress",
+      "name": "Consumidor Final",
+      "email": "consumidor@final.com",
+      "phone": "-",
+      "debt": 0,
+      "totalBought": 0,
+      "debts": [],
+      "registeredAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "cust_1_jz",
+      "tenantId": "tenant_jz",
+      "name": "Juan Pérez",
+      "email": "juan@perez.com",
+      "phone": "1123456789",
+      "debt": 0,
+      "totalBought": 47000,
+      "debts": [],
+      "registeredAt": "2026-06-15T12:00:00.000Z"
+    },
+    {
+      "id": "cust_2_jz",
+      "tenantId": "tenant_jz",
+      "name": "María Gómez",
+      "email": "maria@gomez.com",
+      "phone": "1187654321",
+      "debt": 12000,
+      "totalBought": 12000,
+      "debts": [
+        {
+          "saleId": "sale_seeded_1",
+          "date": "2026-07-01T15:30:00.000Z",
+          "productId": "prod_1",
+          "productName": "Remera Básica Negra",
+          "quantity": 1,
+          "price": 12000,
+          "pendingAmount": 12000
+        }
+      ],
+      "registeredAt": "2026-07-01T10:00:00.000Z"
+    },
+    {
+      "id": "cust_1_elsol",
+      "tenantId": "tenant_elsol",
+      "name": "Carlos Santana",
+      "email": "carlos@santana.com",
+      "phone": "261456123",
+      "debt": 45000,
+      "totalBought": 90000,
+      "debts": [
+        {
+          "saleId": "sale_seeded_2",
+          "date": "2026-07-05T18:00:00.000Z",
+          "productId": "prod_4",
+          "productName": "Zapatillas Urbanas Blancas",
+          "quantity": 1,
+          "price": 45000,
+          "pendingAmount": 45000
+        }
+      ],
+      "registeredAt": "2026-07-05T12:00:00.000Z"
     }
   ],
-  "sales": []
+  "sales": [
+    {
+      "id": "sale_seeded_1",
+      "tenantId": "tenant_jz",
+      "date": "2026-07-01T15:30:00.000Z",
+      "customerId": "cust_2_jz",
+      "customerName": "María Gómez",
+      "items": [
+        {
+          "productId": "prod_1",
+          "productName": "Remera Básica Negra",
+          "quantity": 1,
+          "price": 12000
+        }
+      ],
+      "total": 12000,
+      "paymentMethod": "cuenta_corriente",
+      "status": "pendiente",
+      "debtAmount": 12000,
+      "userId": "user_jz_vendedor",
+      "userName": "Sofía Vendedora"
+    },
+    {
+      "id": "sale_seeded_2",
+      "tenantId": "tenant_elsol",
+      "date": "2026-07-05T18:00:00.000Z",
+      "customerId": "cust_1_elsol",
+      "customerName": "Carlos Santana",
+      "items": [
+        {
+          "productId": "prod_4",
+          "productName": "Zapatillas Urbanas Blancas",
+          "quantity": 1,
+          "price": 45000
+        }
+      ],
+      "total": 45000,
+      "paymentMethod": "cuenta_corriente",
+      "status": "pendiente",
+      "debtAmount": 45000,
+      "userId": "user_elsol_vendedor",
+      "userName": "Pedro Vendedor"
+    },
+    {
+      "id": "sale_seeded_3",
+      "tenantId": "tenant_jz",
+      "date": "2026-07-10T11:20:00.000Z",
+      "customerId": "cust_1_jz",
+      "customerName": "Juan Pérez",
+      "items": [
+        {
+          "productId": "prod_2",
+          "productName": "Jean Slim Blue",
+          "quantity": 1,
+          "price": 35000
+        }
+      ],
+      "total": 35000,
+      "paymentMethod": "transferencia",
+      "status": "pagado",
+      "debtAmount": 0,
+      "userId": "user_jz_admin",
+      "userName": "Admin J&Z"
+    }
+  ],
+  "loginLogs": [
+    {
+      "id": "log_1785037876488_y76e",
+      "tenantId": "tenant_elsol",
+      "userId": "user_elsol_admin",
+      "userName": "Carlos Admin",
+      "userEmail": "carlos@elsol.com",
+      "role": "administrador",
+      "timestamp": "2026-07-26T03:51:16.467Z",
+      "dateFormatted": "26/07/2026, 00:51:16 hs (ARG)",
+      "deviceInfo": "Navegador Web (PC)"
+    },
+    {
+      "id": "log_1785037610262_zk7l",
+      "tenantId": "tenant_jz",
+      "userId": "user_jz_admin",
+      "userName": "Admin J&Z",
+      "userEmail": "turacam2014@gmail.com",
+      "role": "administrador",
+      "timestamp": "2026-07-26T03:46:50.237Z",
+      "dateFormatted": "26/07/2026, 03:46:50",
+      "deviceInfo": "Navegador Web (PC)"
+    }
+  ]
 }

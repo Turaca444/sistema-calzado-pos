@@ -73,10 +73,23 @@ export interface Sale {
   userName?: string;
 }
 
+export interface LoginLog {
+  id: string;
+  tenantId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  role: UserRole;
+  timestamp: string;
+  dateFormatted: string;
+  deviceInfo?: string;
+}
+
 export interface DBState {
   products: Product[];
   customers: Customer[];
   sales: Sale[];
   tenants: Tenant[];
   users: User[];
+  loginLogs?: LoginLog[];
 }

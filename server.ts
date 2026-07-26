@@ -2,7 +2,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { DBState, Product, Customer, Sale, SaleItem, UnpaidItem, Tenant, User, UserRole } from "./src/types";
+import { DBState, Product, Customer, Sale, SaleItem, UnpaidItem, Tenant, User, UserRole, LoginLog } from "./src/types";
 
 const app = express();
 const PORT = 3000;
@@ -16,7 +16,7 @@ const initialData: DBState = {
   tenants: [
     {
       id: "tenant_jz",
-      name: "J&Z Indumentaria",
+      name: "JM Software",
       plan: "Plan Pro",
       status: "active",
       paymentGateway: "stripe",
@@ -342,6 +342,22 @@ function readDB(): DBState {
       fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2), "utf-8");
       return initialData;
     }
+    // Automatically migrate old default tenant name "J&Z Indumentaria" to "JM Software"
+    let updated = false;
+    parsed.tenants = parsed.tenants.map((t: Tenant) => {
+      if (t.id === "tenant_jz" && t.name === "J&Z Indumentaria") {
+        updated = true;
+        return { ...t, name: "JM Software" };
+      }
+      return t;
+    });
+    if (updated) {
+      fs.writeFileSync(DATA_FILE, JSON.stringify(parsed, null, 2), "utf-8");
+    }
+    // Ensure loginLogs exists
+    if (!parsed.loginLogs) {
+      parsed.loginLogs = [];
+    }
     return parsed;
   } catch (error) {
     console.error("Error al leer la base de datos:", error);
@@ -397,6 +413,32 @@ app.use("/api", (req, res, next) => {
 app.get("/api/tenants", (req, res) => {
   const db = readDB();
   res.json(db.tenants);
+});
+
+// PUT: Update Tenant Details (Allow changing commerce/store name, plan, etc.)
+app.put("/api/tenants/:id", (req, res) => {
+  const db = readDB();
+  const { id } = req.params;
+  const { name, plan, status, monthlyPrice } = req.body;
+
+  const tIdx = db.tenants.findIndex(t => t.id === id);
+  if (tIdx === -1) {
+    return res.status(404).json({ error: "Comercio no encontrado" });
+  }
+
+  if (name !== undefined && typeof name === "string") {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      return res.status(400).json({ error: "El nombre del comercio no puede estar vacío" });
+    }
+    db.tenants[tIdx].name = trimmed;
+  }
+  if (plan !== undefined) db.tenants[tIdx].plan = plan;
+  if (status !== undefined) db.tenants[tIdx].status = status;
+  if (monthlyPrice !== undefined) db.tenants[tIdx].monthlyPrice = Number(monthlyPrice);
+
+  writeDB(db);
+  res.json(db.tenants[tIdx]);
 });
 
 // POST: Toggle Tenant Status (Utility for live testing)
@@ -941,6 +983,90 @@ app.delete("/api/users/:id", (req, res) => {
   db.users.splice(userIdx, 1);
   writeDB(db);
   res.json({ message: "Usuario de comercio eliminado con éxito", id });
+});
+
+// ==================== LOGIN LOGS API (Registro de Ingresos) ====================
+
+// GET: Obtain login logs (Scoped to Tenant)
+app.get("/api/login-logs", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  db.loginLogs = db.loginLogs || [];
+
+  const filtered = db.loginLogs
+    .filter(l => l.tenantId === tenantId)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+  res.json(filtered);
+});
+
+// POST: Record a new login with Date and Time
+app.post("/api/login-logs", (req, res) => {
+  const db = readDB();
+  db.loginLogs = db.loginLogs || [];
+
+  const tenantId = (req.headers["x-tenant-id"] as string) || req.body.tenantId || "tenant_jz";
+  const { userId, userName, userEmail, role, deviceInfo } = req.body;
+
+  if (!role) {
+    return res.status(400).json({ error: "El rol (administrador o vendedor) es requerido" });
+  }
+
+  const now = new Date();
+  const argTimeStr = now.toLocaleString("es-AR", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+  const dateFormatted = `${argTimeStr} hs (ARG)`;
+
+  const newLog: LoginLog = {
+    id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    tenantId,
+    userId: userId || `user_anon_${role}`,
+    userName: userName || (role === "administrador" ? "Administrador General" : "Vendedor de Caja"),
+    userEmail: userEmail || (role === "administrador" ? "admin@comercio.com" : "vendedor@comercio.com"),
+    role: role as UserRole,
+    timestamp: now.toISOString(),
+    dateFormatted,
+    deviceInfo: deviceInfo || "Navegador Web / PC"
+  };
+
+  db.loginLogs.unshift(newLog);
+
+  // Keep max 500 records
+  if (db.loginLogs.length > 500) {
+    db.loginLogs = db.loginLogs.slice(0, 500);
+  }
+
+  writeDB(db);
+  res.status(201).json(newLog);
+});
+
+// DELETE: Clear all login logs (Scoped to Tenant)
+app.delete("/api/login-logs", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  db.loginLogs = (db.loginLogs || []).filter(l => {
+    const itemTenant = l.tenantId || "tenant_jz";
+    return itemTenant !== tenantId;
+  });
+  writeDB(db);
+  res.json({ message: "Historial de ingresos del comercio vaciado con éxito" });
+});
+
+// DELETE: Delete individual login log by ID
+app.delete("/api/login-logs/:id", (req, res) => {
+  const db = readDB();
+  const { id } = req.params;
+  db.loginLogs = (db.loginLogs || []).filter(l => String(l.id) !== String(id));
+  writeDB(db);
+  res.json({ message: "Registro de ingreso eliminado con éxito", id });
 });
 
 // ========================================================
