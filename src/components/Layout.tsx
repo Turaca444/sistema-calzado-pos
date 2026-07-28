@@ -38,7 +38,7 @@ import {
   Printer,
   AlertTriangle
 } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { Tenant, UserRole, User as UserType, LoginLog } from "../types";
 
 interface LayoutProps {
@@ -498,16 +498,18 @@ export default function Layout({
 
         {/* Content canvas */}
         <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">
-          <motion.div
-            key={activeTenantId + "_" + currentView}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.15 }}
-            className="h-full"
-          >
-            {children}
-          </motion.div>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTenantId + "_" + currentView}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.15 }}
+              className="h-full"
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 
@@ -829,14 +831,21 @@ export default function Layout({
         </div>
       )}
       {/* LOGIN AUDIT LOGS MODAL (Registro de Ingresos con Fecha y Hora) */}
-      {showLoginLogsModal && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+      <AnimatePresence>
+        {showLoginLogsModal && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8"
+            key="login-logs-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto"
           >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl border border-slate-200 overflow-hidden my-8"
+            >
             {/* Modal Header */}
             <div className="bg-slate-900 p-6 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800">
               <div className="flex items-center space-x-3">
@@ -1206,8 +1215,9 @@ export default function Layout({
             </div>
 
           </motion.div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Standalone Edit Tenant Name Modal */}
       {showEditTenantModal && (
