@@ -48,35 +48,40 @@ const initialData: DBState = {
       name: "Admin J&Z",
       email: "turacam2014@gmail.com",
       role: "administrador",
-      tenantId: "tenant_jz"
+      tenantId: "tenant_jz",
+      avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
     },
     {
       id: "user_jz_vendedor",
       name: "Sofía Vendedora",
       email: "sofia.vende@jz.com",
       role: "vendedor",
-      tenantId: "tenant_jz"
+      tenantId: "tenant_jz",
+      avatarUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80"
     },
     {
       id: "user_elsol_admin",
       name: "Carlos Admin",
       email: "carlos@elsol.com",
       role: "administrador",
-      tenantId: "tenant_elsol"
+      tenantId: "tenant_elsol",
+      avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80"
     },
     {
       id: "user_elsol_vendedor",
       name: "Pedro Vendedor",
       email: "pedro@elsol.com",
       role: "vendedor",
-      tenantId: "tenant_elsol"
+      tenantId: "tenant_elsol",
+      avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80"
     },
     {
       id: "user_moda_admin",
       name: "Ana Admin",
       email: "ana@moda.com",
       role: "administrador",
-      tenantId: "tenant_modaexpress"
+      tenantId: "tenant_modaexpress",
+      avatarUrl: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80"
     }
   ],
   products: [
@@ -351,6 +356,33 @@ function readDB(): DBState {
       }
       return t;
     });
+    // Ensure users have avatarUrl populated
+    if (parsed.users && parsed.users.length > 0) {
+      const defaultAvatars: Record<string, string> = {
+        "user_jz_admin": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+        "user_jz_vendedor": "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
+        "user_elsol_admin": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80",
+        "user_elsol_vendedor": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80",
+        "user_moda_admin": "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80"
+      };
+      let usersUpdated = false;
+      parsed.users = parsed.users.map((u: User) => {
+        if (!u.avatarUrl) {
+          usersUpdated = true;
+          const assigned = defaultAvatars[u.id] || (
+            u.role === "administrador"
+              ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+              : "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80"
+          );
+          return { ...u, avatarUrl: assigned, photoUrl: assigned };
+        }
+        return u;
+      });
+      if (usersUpdated) {
+        updated = true;
+      }
+    }
+
     if (updated) {
       fs.writeFileSync(DATA_FILE, JSON.stringify(parsed, null, 2), "utf-8");
     }
@@ -915,18 +947,26 @@ app.get("/api/users", (req, res) => {
 app.post("/api/users", (req, res) => {
   const db = readDB();
   const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
-  const { name, email, role } = req.body;
+  const { name, email, role, avatarUrl, photoUrl, avatar } = req.body;
 
   if (!name || !role) {
     return res.status(400).json({ error: "El nombre y el rol son obligatorios" });
   }
+
+  const finalAvatar = avatarUrl || photoUrl || avatar || (
+    role === "administrador"
+      ? "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+      : "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80"
+  );
 
   const newUser: User = {
     id: `user_${Date.now()}`,
     tenantId,
     name,
     email: email || `${name.toLowerCase().replace(/\s+/g, ".")}@comercio.com`,
-    role: role as UserRole
+    role: role as UserRole,
+    avatarUrl: finalAvatar,
+    photoUrl: finalAvatar
   };
 
   db.users.push(newUser);
@@ -939,23 +979,49 @@ app.put("/api/users/:id", (req, res) => {
   const db = readDB();
   const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
   const { id } = req.params;
-  const { name, email, role } = req.body;
+  const { name, email, role, avatarUrl, photoUrl, avatar } = req.body;
 
   const userIdx = db.users.findIndex(u => u.id === id && u.tenantId === tenantId);
   if (userIdx === -1) {
     return res.status(404).json({ error: "Usuario no encontrado o no pertenece a su comercio" });
   }
 
+  const newAvatar = avatarUrl !== undefined ? avatarUrl : (photoUrl !== undefined ? photoUrl : (avatar !== undefined ? avatar : db.users[userIdx].avatarUrl));
+
   const updatedUser = {
     ...db.users[userIdx],
     ...(name !== undefined && { name }),
     ...(email !== undefined && { email }),
-    ...(role !== undefined && { role: role as UserRole })
+    ...(role !== undefined && { role: role as UserRole }),
+    ...(newAvatar !== undefined && { avatarUrl: newAvatar, photoUrl: newAvatar })
   };
 
   db.users[userIdx] = updatedUser;
   writeDB(db);
   res.json(updatedUser);
+});
+
+// PATCH: Update user photo specifically (Scoped to Tenant)
+app.patch("/api/users/:id/photo", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { id } = req.params;
+  const { avatarUrl, photoUrl, avatar, image } = req.body;
+
+  const userIdx = db.users.findIndex(u => u.id === id && u.tenantId === tenantId);
+  if (userIdx === -1) {
+    return res.status(404).json({ error: "Usuario no encontrado o no pertenece a su comercio" });
+  }
+
+  const newPhoto = avatarUrl || photoUrl || avatar || image;
+  if (!newPhoto) {
+    return res.status(400).json({ error: "Se requiere la URL o imagen base64 de la foto ('photoUrl', 'avatarUrl' o 'image')" });
+  }
+
+  db.users[userIdx].avatarUrl = newPhoto;
+  db.users[userIdx].photoUrl = newPhoto;
+  writeDB(db);
+  res.json({ message: "Foto de perfil actualizada con éxito", user: db.users[userIdx] });
 });
 
 // DELETE: Delete User (Scoped to Tenant & Role-Protected)

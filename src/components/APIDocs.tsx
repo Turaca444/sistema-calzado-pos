@@ -101,6 +101,37 @@ export default function APIDocs() {
       description: "Eliminar un cliente de la base de datos.",
       payload: null,
       codeExample: `fetch('/api/customers/cust_123', {\n  method: 'DELETE'\n})\n.then(res => res.json())\n.then(data => console.log(data));`
+    },
+    {
+      id: "get_users",
+      method: "GET",
+      path: "/api/users",
+      description: "Obtener la lista de administradores y vendedores con sus fotos de perfil y roles.",
+      payload: null,
+      codeExample: `fetch('/api/users', {\n  headers: { 'x-tenant-id': 'tenant_jz' }\n})\n.then(res => res.json())\n.then(users => console.log(users));`
+    },
+    {
+      id: "patch_user_photo",
+      method: "PATCH",
+      path: "/api/users/user_jz_vendedor/photo",
+      description: "Actualizar la foto de perfil de un administrador o vendedor (Soporta URL HTTP o Base64 Data URL).",
+      payload: {
+        photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+      },
+      codeExample: `fetch('/api/users/user_jz_vendedor/photo', {\n  method: 'PATCH',\n  headers: { \n    'Content-Type': 'application/json',\n    'x-tenant-id': 'tenant_jz'\n  },\n  body: JSON.stringify({\n    photoUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"\n  })\n})\n.then(res => res.json())\n.then(data => console.log(data));`
+    },
+    {
+      id: "put_user",
+      method: "PUT",
+      path: "/api/users/user_jz_admin",
+      description: "Actualizar datos completos de un administrador o vendedor (Nombre, Email, Rol y Foto).",
+      payload: {
+        name: "Elena Administradora",
+        email: "elena@comercio.com",
+        role: "administrador",
+        avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80"
+      },
+      codeExample: `fetch('/api/users/user_jz_admin', {\n  method: 'PUT',\n  headers: {\n    'Content-Type': 'application/json',\n    'x-tenant-id': 'tenant_jz'\n  },\n  body: JSON.stringify({\n    name: "Elena Administradora",\n    email: "elena@comercio.com",\n    role: "administrador",\n    avatarUrl: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80"\n  })\n})\n.then(res => res.json())\n.then(data => console.log(data));`
     }
   ];
 

@@ -36,7 +36,9 @@ import {
   FileText,
   Download,
   Printer,
-  AlertTriangle
+  AlertTriangle,
+  Camera,
+  Image as ImageIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { Tenant, UserRole, User as UserType, LoginLog } from "../types";
@@ -57,8 +59,8 @@ interface LayoutProps {
   users: UserType[];
   activeUserId: string;
   onUserChange: (id: string) => void;
-  onAddUser: (name: string, email: string, role: UserRole) => Promise<void>;
-  onUpdateUser: (id: string, name: string, email: string, role: UserRole) => Promise<void>;
+  onAddUser: (name: string, email: string, role: UserRole, avatarUrl?: string) => Promise<void>;
+  onUpdateUser: (id: string, name: string, email: string, role: UserRole, avatarUrl?: string) => Promise<void>;
   onDeleteUser: (id: string) => Promise<void>;
   onLogout?: () => void;
   loginLogs?: LoginLog[];
@@ -102,11 +104,45 @@ export default function Layout({
   const [editName, setEditName] = React.useState("");
   const [editEmail, setEditEmail] = React.useState("");
   const [editRole, setEditRole] = React.useState<UserRole>("vendedor");
+  const [editAvatarUrl, setEditAvatarUrl] = React.useState("");
   const [newUserName, setNewUserName] = React.useState("");
   const [newUserEmail, setNewUserEmail] = React.useState("");
   const [newUserRole, setNewUserRole] = React.useState<UserRole>("vendedor");
+  const [newUserAvatarUrl, setNewUserAvatarUrl] = React.useState("");
   const [deletingLogId, setDeletingLogId] = React.useState<string | null>(null);
   const [showConfirmClearAll, setShowConfirmClearAll] = React.useState(false);
+
+  // Quick photo modal state
+  const [quickPhotoUser, setQuickPhotoUser] = React.useState<UserType | null>(null);
+  const [quickPhotoUrl, setQuickPhotoUrl] = React.useState<string>("");
+
+  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setUrl: (url: string) => void) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        alert("La imagen excede el límite de 5MB. Por favor elige una imagen más pequeña.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (typeof reader.result === 'string') {
+          setUrl(reader.result);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const PRESET_AVATARS = [
+    { label: "Admin Elena", url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80" },
+    { label: "Admin Carlos", url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80" },
+    { label: "Admin Patricia", url: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80" },
+    { label: "Admin Roberto", url: "https://images.unsplash.com/photo-1560250097-0b93528c311a?w=150&auto=format&fit=crop&q=80" },
+    { label: "Vendedora Sofía", url: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80" },
+    { label: "Vendedor Pedro", url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80" },
+    { label: "Vendedora Camila", url: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80" },
+    { label: "Vendedor Lucas", url: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80" }
+  ];
 
   const currentTenant = tenants.find((t) => t.id === activeTenantId);
 
@@ -340,12 +376,29 @@ export default function Layout({
               ))}
             </select>
             
-            <div className="flex items-center justify-between text-[10px] bg-slate-900/40 p-1.5 rounded-lg border border-slate-800/40">
-              <span className="text-slate-400">Rol activo:</span>
-              <span className={`font-bold px-1.5 py-0.5 rounded text-[9px] ${
-                activeRole === "administrador" ? "text-indigo-400 bg-indigo-950/40" : "text-emerald-400 bg-emerald-950/40"
+            <div className="flex items-center space-x-2 bg-slate-900/60 p-2 rounded-xl border border-slate-800/80">
+              {activeUser?.avatarUrl ? (
+                <img
+                  src={activeUser.avatarUrl}
+                  alt={activeUser.name}
+                  className="h-7 w-7 rounded-lg object-cover border border-slate-700 shrink-0"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className={`h-7 w-7 rounded-lg flex items-center justify-center font-bold text-[9px] shrink-0 ${
+                  activeRole === "administrador" ? "bg-indigo-900/60 text-indigo-300 border border-indigo-700/50" : "bg-emerald-900/60 text-emerald-300 border border-emerald-700/50"
+                }`}>
+                  {activeRole === "administrador" ? "AD" : "VD"}
+                </div>
+              )}
+              <div className="flex-1 min-w-0 text-left">
+                <div className="text-[11px] font-bold text-white truncate">{activeUser?.name || "Usuario"}</div>
+                <div className="text-[9px] text-slate-400 font-mono truncate">{activeUser?.email}</div>
+              </div>
+              <span className={`font-bold px-1.5 py-0.5 rounded text-[8px] uppercase shrink-0 ${
+                activeRole === "administrador" ? "text-indigo-400 bg-indigo-950/60 border border-indigo-900/40" : "text-emerald-400 bg-emerald-950/60 border border-emerald-900/40"
               }`}>
-                {activeRole.toUpperCase()}
+                {activeRole}
               </span>
             </div>
 
@@ -474,13 +527,37 @@ export default function Layout({
                 {activeUser ? activeUser.email : "..."} ({activeUser ? activeUser.role : ""})
               </span>
             </div>
-            <div className={`h-9 w-9 rounded-xl border flex items-center justify-center font-extrabold text-xs shadow-sm ${
-              activeUser?.role === "administrador"
-                ? "bg-indigo-50 border-indigo-100 text-indigo-600"
-                : "bg-emerald-50 border-emerald-100 text-emerald-600"
-            }`}>
-              {activeUser?.role === "administrador" ? "AD" : "VD"}
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (activeUser) {
+                  setQuickPhotoUser(activeUser);
+                  setQuickPhotoUrl(activeUser.avatarUrl || activeUser.photoUrl || "");
+                }
+              }}
+              className="relative group focus:outline-none cursor-pointer"
+              title="Haz clic para cambiar tu foto de perfil"
+            >
+              {activeUser?.avatarUrl ? (
+                <img
+                  src={activeUser.avatarUrl}
+                  alt={activeUser.name}
+                  className="h-9 w-9 rounded-xl object-cover border border-slate-200 shadow-sm ring-2 ring-indigo-500/20 group-hover:ring-indigo-500 shrink-0 transition-all"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className={`h-9 w-9 rounded-xl border flex items-center justify-center font-extrabold text-xs shadow-sm transition-all ${
+                  activeUser?.role === "administrador"
+                    ? "bg-indigo-50 border-indigo-100 text-indigo-600 group-hover:bg-indigo-100"
+                    : "bg-emerald-50 border-emerald-100 text-emerald-600 group-hover:bg-emerald-100"
+                }`}>
+                  {activeUser?.role === "administrador" ? "AD" : "VD"}
+                </div>
+              )}
+              <div className="absolute -bottom-1 -right-1 bg-indigo-600 text-white p-0.5 rounded-full shadow-xs group-hover:scale-110 transition-all">
+                <Camera className="h-2.5 w-2.5" />
+              </div>
+            </button>
 
             {onLogout && (
               <button
@@ -650,49 +727,120 @@ export default function Layout({
                     const isEditing = editingUserId === u.id;
                     
                     return (
-                      <div key={u.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white hover:bg-slate-50/40 transition-all">
+                      <div key={u.id} className="p-4 flex flex-col justify-between gap-3 bg-white hover:bg-slate-50/40 transition-all">
                         {isEditing ? (
-                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2 text-left">
-                            <div>
-                              <label className="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">Nombre</label>
-                              <input
-                                type="text"
-                                value={editName}
-                                onChange={(e) => setEditName(e.target.value)}
-                                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
-                              />
+                          <div className="space-y-3 text-left">
+                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                              <div>
+                                <label className="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">Nombre</label>
+                                <input
+                                  type="text"
+                                  value={editName}
+                                  onChange={(e) => setEditName(e.target.value)}
+                                  className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">Email</label>
+                                <input
+                                  type="email"
+                                  value={editEmail}
+                                  onChange={(e) => setEditEmail(e.target.value)}
+                                  className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium font-mono"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">Rol</label>
+                                <select
+                                  value={editRole}
+                                  onChange={(e) => setEditRole(e.target.value as UserRole)}
+                                  className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                                >
+                                  <option value="administrador">Administrador</option>
+                                  <option value="vendedor">Vendedor</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">Foto de Perfil</label>
+                                <div className="flex items-center space-x-1">
+                                  <input
+                                    type="text"
+                                    placeholder="https://..."
+                                    value={editAvatarUrl}
+                                    onChange={(e) => setEditAvatarUrl(e.target.value)}
+                                    className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono text-[10px]"
+                                  />
+                                  <label className="px-2 py-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-[10px] font-bold cursor-pointer shrink-0 flex items-center space-x-1 transition-all" title="Subir foto desde la PC/Celular">
+                                    <ImageIcon className="h-3 w-3" />
+                                    <span className="hidden sm:inline">Subir</span>
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={(e) => handleImageFileUpload(e, setEditAvatarUrl)}
+                                    />
+                                  </label>
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <label className="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">Email</label>
-                              <input
-                                type="email"
-                                value={editEmail}
-                                onChange={(e) => setEditEmail(e.target.value)}
-                                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium font-mono"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">Rol</label>
-                              <select
-                                value={editRole}
-                                onChange={(e) => setEditRole(e.target.value as UserRole)}
-                                className="w-full px-2.5 py-1.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
-                              >
-                                <option value="administrador">Administrador</option>
-                                <option value="vendedor">Vendedor</option>
-                              </select>
+
+                            {/* Preset avatars for quick pick */}
+                            <div className="pt-1 flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <label className="block text-[8px] font-bold text-slate-400 uppercase mb-1 flex items-center space-x-1">
+                                  <Camera className="h-3 w-3 text-indigo-500" />
+                                  <span>Elegir Foto Predefinida:</span>
+                                </label>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {PRESET_AVATARS.map((preset, idx) => (
+                                    <button
+                                      key={idx}
+                                      type="button"
+                                      onClick={() => setEditAvatarUrl(preset.url)}
+                                      className={`flex items-center space-x-1 px-2 py-1 rounded-lg text-[10px] border transition-all cursor-pointer ${
+                                        editAvatarUrl === preset.url
+                                          ? "bg-indigo-50 border-indigo-400 text-indigo-700 font-bold"
+                                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                                      }`}
+                                    >
+                                      <img src={preset.url} alt="" className="h-4 w-4 rounded-full object-cover" referrerPolicy="no-referrer" />
+                                      <span>{preset.label}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                              {editAvatarUrl && (
+                                <div className="flex items-center space-x-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                                  <span className="text-[9px] font-bold text-slate-400 uppercase">Vista previa:</span>
+                                  <img src={editAvatarUrl} alt="Preview" className="h-7 w-7 rounded-lg object-cover border border-slate-300" referrerPolicy="no-referrer" />
+                                </div>
+                              )}
                             </div>
                           </div>
                         ) : (
                           <div className="flex items-center space-x-3 flex-1 min-w-0 text-left">
-                            <div className={`h-9 w-9 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
-                              u.role === "administrador" ? "bg-indigo-50 text-indigo-600 border border-indigo-100" : "bg-emerald-50 text-emerald-600 border border-emerald-100"
-                            }`}>
-                              {u.role === "administrador" ? "AD" : "VD"}
-                            </div>
+                            {u.avatarUrl ? (
+                              <img
+                                src={u.avatarUrl}
+                                alt={u.name}
+                                className="h-10 w-10 rounded-xl object-cover border border-slate-200 shrink-0 shadow-xs ring-2 ring-indigo-500/10"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <div className={`h-10 w-10 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                                u.role === "administrador" ? "bg-indigo-50 text-indigo-600 border border-indigo-100" : "bg-emerald-50 text-emerald-600 border border-emerald-100"
+                              }`}>
+                                {u.role === "administrador" ? "AD" : "VD"}
+                              </div>
+                            )}
                             <div className="truncate">
                               <div className="flex items-center space-x-2">
                                 <span className="text-xs font-bold text-slate-800">{u.name}</span>
+                                <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded-full uppercase ${
+                                  u.role === "administrador" ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100 text-emerald-700"
+                                }`}>
+                                  {u.role}
+                                </span>
                                 {u.id === activeUserId && (
                                   <span className="text-[8px] bg-indigo-600 text-white font-black px-1.5 py-0.5 rounded-full uppercase tracking-wider">
                                     Sesión Activa
@@ -715,13 +863,14 @@ export default function Layout({
                                     alert("El nombre no puede estar vacío");
                                     return;
                                   }
-                                  await onUpdateUser(u.id, editName, editEmail, editRole);
+                                  await onUpdateUser(u.id, editName, editEmail, editRole, editAvatarUrl);
                                   setEditingUserId(null);
                                 }}
-                                className="p-1.5 bg-emerald-50 text-emerald-600 border border-emerald-100 hover:bg-emerald-100 rounded-lg transition-all"
+                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all text-xs font-bold flex items-center space-x-1"
                                 title="Guardar Cambios"
                               >
                                 <Check className="h-3.5 w-3.5" />
+                                <span>Guardar</span>
                               </button>
                               <button
                                 type="button"
@@ -741,11 +890,13 @@ export default function Layout({
                                   setEditName(u.name);
                                   setEditEmail(u.email);
                                   setEditRole(u.role);
+                                  setEditAvatarUrl(u.avatarUrl || u.photoUrl || "");
                                 }}
-                                className="p-1.5 bg-slate-50 text-slate-600 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 rounded-lg transition-all"
-                                title="Editar nombre/email"
+                                className="p-1.5 bg-slate-50 text-slate-600 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 rounded-lg transition-all flex items-center space-x-1"
+                                title="Editar datos y foto de perfil"
                               >
                                 <Edit className="h-3.5 w-3.5" />
+                                <span className="text-[10px] font-medium hidden sm:inline">Editar / Foto</span>
                               </button>
                               
                               <button
@@ -769,12 +920,12 @@ export default function Layout({
               <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200/60 space-y-3.5">
                 <div className="flex items-center space-x-2 text-left">
                   <Plus className="h-4 w-4 text-indigo-500" />
-                  <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">Añadir Nuevo Vendedor / Admin</h4>
+                  <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">Añadir Nuevo Vendedor / Admin con Foto</h4>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-left">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-left">
                   <div>
-                    <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Nombre Completo</label>
+                    <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Nombre Completo *</label>
                     <input
                       type="text"
                       placeholder="Ej. Pedro Vendedor"
@@ -794,7 +945,7 @@ export default function Layout({
                     />
                   </div>
                   <div>
-                    <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Rol / Permisos</label>
+                    <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Rol / Permisos *</label>
                     <select
                       value={newUserRole}
                       onChange={(e) => setNewUserRole(e.target.value as UserRole)}
@@ -803,6 +954,53 @@ export default function Layout({
                       <option value="vendedor">Vendedor (Sellers)</option>
                       <option value="administrador">Administrador</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Foto de Perfil</label>
+                    <div className="flex items-center space-x-1">
+                      <input
+                        type="url"
+                        placeholder="https://..."
+                        value={newUserAvatarUrl}
+                        onChange={(e) => setNewUserAvatarUrl(e.target.value)}
+                        className="w-full px-2.5 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white font-mono text-[10px]"
+                      />
+                      <label className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-bold cursor-pointer shrink-0 flex items-center space-x-1 transition-all" title="Subir desde la PC/Celular">
+                        <ImageIcon className="h-3.5 w-3.5" />
+                        <span className="hidden sm:inline">Subir</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleImageFileUpload(e, setNewUserAvatarUrl)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Preset Avatars for new user */}
+                <div className="text-left space-y-1">
+                  <label className="block text-[8.5px] font-bold text-slate-400 uppercase flex items-center space-x-1">
+                    <Camera className="h-3 w-3 text-indigo-500" />
+                    <span>Seleccionar Foto de Perfil Rápida:</span>
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PRESET_AVATARS.map((preset, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setNewUserAvatarUrl(preset.url)}
+                        className={`flex items-center space-x-1 px-2 py-1 rounded-lg text-[10px] border transition-all ${
+                          newUserAvatarUrl === preset.url
+                            ? "bg-indigo-50 border-indigo-400 text-indigo-700 font-bold shadow-xs"
+                            : "bg-white border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        <img src={preset.url} alt="" className="h-4 w-4 rounded-full object-cover" referrerPolicy="no-referrer" />
+                        <span>{preset.label}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -813,15 +1011,16 @@ export default function Layout({
                       alert("Por favor introduce un nombre para el nuevo personal");
                       return;
                     }
-                    await onAddUser(newUserName, newUserEmail, newUserRole);
+                    await onAddUser(newUserName, newUserEmail, newUserRole, newUserAvatarUrl);
                     setNewUserName("");
                     setNewUserEmail("");
                     setNewUserRole("vendedor");
+                    setNewUserAvatarUrl("");
                   }}
-                  className="w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/15 flex items-center justify-center space-x-1.5 transition-all"
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/15 flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
                 >
                   <PlusCircle className="h-4 w-4" />
-                  <span>Registrar Personal en este Local</span>
+                  <span>Registrar Personal con Foto en este Local</span>
                 </button>
               </div>
 
@@ -1315,6 +1514,148 @@ export default function Layout({
               >
                 <Check className="h-3.5 w-3.5" />
                 <span>Guardar Nombre</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Standalone Quick Profile Photo Change Modal */}
+      {quickPhotoUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 bg-indigo-600/20 text-indigo-400 rounded-xl border border-indigo-500/20">
+                  <Camera className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black font-display uppercase tracking-wider">Cambiar Foto de Perfil</h3>
+                  <p className="text-[10px] text-slate-400">{quickPhotoUser.name} ({quickPhotoUser.role})</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickPhotoUser(null)}
+                className="text-slate-400 hover:text-white bg-slate-800 p-1.5 rounded-xl transition-all cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 space-y-4">
+              {/* Image Preview */}
+              <div className="flex items-center space-x-4 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+                {quickPhotoUrl ? (
+                  <img
+                    src={quickPhotoUrl}
+                    alt="Preview"
+                    className="h-16 w-16 rounded-2xl object-cover border-2 border-indigo-500 shadow-md ring-4 ring-indigo-500/10 shrink-0"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className={`h-16 w-16 rounded-2xl border-2 flex items-center justify-center font-black text-lg shadow-md shrink-0 ${
+                    quickPhotoUser.role === "administrador" ? "bg-indigo-50 border-indigo-200 text-indigo-600" : "bg-emerald-50 border-emerald-200 text-emerald-600"
+                  }`}>
+                    {quickPhotoUser.role === "administrador" ? "AD" : "VD"}
+                  </div>
+                )}
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800">{quickPhotoUser.name}</h4>
+                  <span className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase inline-block mt-0.5 ${
+                    quickPhotoUser.role === "administrador" ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100 text-emerald-700"
+                  }`}>
+                    {quickPhotoUser.role}
+                  </span>
+                  <p className="text-[10px] text-slate-400 mt-1">Selecciona una foto o sube un archivo desde tu dispositivo.</p>
+                </div>
+              </div>
+
+              {/* Upload file button */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  1. Cargar archivo desde tu Equipo / Cámara
+                </label>
+                <label className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-2 border-dashed border-indigo-200 hover:border-indigo-400 rounded-xl font-bold text-xs cursor-pointer transition-all">
+                  <ImageIcon className="h-4 w-4 text-indigo-600" />
+                  <span>Examinar o tomar foto de la cámara</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => handleImageFileUpload(e, setQuickPhotoUrl)}
+                  />
+                </label>
+              </div>
+
+              {/* Image URL input */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  2. O pegar enlace/URL de imagen
+                </label>
+                <input
+                  type="text"
+                  placeholder="https://..."
+                  value={quickPhotoUrl}
+                  onChange={(e) => setQuickPhotoUrl(e.target.value)}
+                  className="w-full bg-white border border-slate-300 text-slate-900 rounded-xl px-3.5 py-2 text-xs font-mono focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none shadow-xs"
+                />
+              </div>
+
+              {/* Preset Gallery */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 flex items-center space-x-1">
+                  <Camera className="h-3.5 w-3.5 text-indigo-500" />
+                  <span>3. O elegir avatar predefinido</span>
+                </label>
+                <div className="grid grid-cols-2 gap-1.5 max-h-36 overflow-y-auto p-1 bg-slate-50 border border-slate-200 rounded-xl">
+                  {PRESET_AVATARS.map((preset, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setQuickPhotoUrl(preset.url)}
+                      className={`flex items-center space-x-2 p-1.5 rounded-lg text-left text-[11px] border transition-all cursor-pointer ${
+                        quickPhotoUrl === preset.url
+                          ? "bg-indigo-600 text-white border-indigo-600 font-bold shadow-xs"
+                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-100"
+                      }`}
+                    >
+                      <img src={preset.url} alt="" className="h-6 w-6 rounded-md object-cover shrink-0" referrerPolicy="no-referrer" />
+                      <span className="truncate">{preset.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-end space-x-2">
+              <button
+                type="button"
+                onClick={() => setQuickPhotoUser(null)}
+                className="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!quickPhotoUser) return;
+                  await onUpdateUser(
+                    quickPhotoUser.id,
+                    quickPhotoUser.name,
+                    quickPhotoUser.email,
+                    quickPhotoUser.role,
+                    quickPhotoUrl
+                  );
+                  setQuickPhotoUser(null);
+                }}
+                className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center space-x-1.5"
+              >
+                <Check className="h-3.5 w-3.5" />
+                <span>Guardar Foto</span>
               </button>
             </div>
           </div>

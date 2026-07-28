@@ -16,6 +16,8 @@ export interface User {
   email: string;
   role: UserRole;
   tenantId: string;
+  avatarUrl?: string;
+  photoUrl?: string;
 }
 
 export interface Product {

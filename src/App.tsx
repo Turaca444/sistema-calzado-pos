@@ -277,7 +277,7 @@ export default function App() {
   };
 
   // Add User handler
-  const handleAddUser = async (name: string, email: string, role: UserRole) => {
+  const handleAddUser = async (name: string, email: string, role: UserRole, avatarUrl?: string) => {
     try {
       const headers = {
         "x-tenant-id": activeTenantId,
@@ -286,7 +286,7 @@ export default function App() {
       const res = await fetch("/api/users", {
         method: "POST",
         headers,
-        body: JSON.stringify({ name, email, role })
+        body: JSON.stringify({ name, email, role, avatarUrl })
       });
       if (res.ok) {
         await fetchUsers();
@@ -300,7 +300,7 @@ export default function App() {
   };
 
   // Update User handler
-  const handleUpdateUser = async (id: string, name: string, email: string, role: UserRole) => {
+  const handleUpdateUser = async (id: string, name: string, email: string, role: UserRole, avatarUrl?: string) => {
     try {
       const headers = {
         "x-tenant-id": activeTenantId,
@@ -309,7 +309,7 @@ export default function App() {
       const res = await fetch(`/api/users/${id}`, {
         method: "PUT",
         headers,
-        body: JSON.stringify({ name, email, role })
+        body: JSON.stringify({ name, email, role, avatarUrl })
       });
       if (res.ok) {
         await fetchUsers();
