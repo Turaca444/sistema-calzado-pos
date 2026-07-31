@@ -12,8 +12,16 @@ import {
   CheckCircle, 
   ArrowRight,
   ArrowLeft,
-  DollarSign
+  DollarSign,
+  QrCode,
+  Copy,
+  Check,
+  Maximize2,
+  X,
+  Building2,
+  Smartphone
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Product, Customer } from "../types";
 import { exportFacturaB } from "../utils/facturaPDF";
 
@@ -52,6 +60,29 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(defaultCustomerId);
   const [paymentMethod, setPaymentMethod] = useState<"contado" | "transferencia" | "cuenta_corriente" | "tarjeta_debito" | "tarjeta_credito">("contado");
   const [cashReceived, setCashReceived] = useState<string>("");
+
+  // QR Code Payment state
+  const [cbuAlias, setCbuAlias] = useState<string>(() => {
+    return localStorage.getItem("jz_cbu_alias") || "JZ.INDUMENTARIA.MP";
+  });
+  const [cbuNumber, setCbuNumber] = useState<string>(() => {
+    return localStorage.getItem("jz_cbu_number") || "0000003100084729103847";
+  });
+  const [showQrModal, setShowQrModal] = useState<boolean>(false);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleSaveQrConfig = (newAlias: string, newCbu: string) => {
+    setCbuAlias(newAlias);
+    setCbuNumber(newCbu);
+    localStorage.setItem("jz_cbu_alias", newAlias);
+    localStorage.setItem("jz_cbu_number", newCbu);
+  };
+
+  const copyToClipboard = (text: string, fieldName: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldName);
+    setTimeout(() => setCopiedField(null), 2000);
+  };
 
   // Sync selectedCustomerId when customers array changes or initial load
   useEffect(() => {
@@ -512,7 +543,7 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
               <span className="text-[10px] font-bold">T. Crédito</span>
             </button>
 
-            {/* Transferencia */}
+            {/* Transferencia / QR MercadoPago */}
             <button
               type="button"
               onClick={() => setPaymentMethod("transferencia")}
@@ -522,8 +553,8 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
                   : "bg-white border-slate-200 text-slate-500 hover:text-slate-800"
               }`}
             >
-              <CreditCard className="h-4 w-4 mb-1 shrink-0 text-blue-600" />
-              <span className="text-[10px] font-bold">Transferencia</span>
+              <QrCode className="h-4 w-4 mb-1 shrink-0 text-blue-600" />
+              <span className="text-[10px] font-bold">Transfer / QR</span>
             </button>
 
             {/* Cuenta Corriente (Fiado/Debe) */}
@@ -576,6 +607,70 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
           </div>
         )}
 
+        {/* 3b. QR Code Payment Box (for Transfer / MercadoPago) */}
+        {paymentMethod === "transferencia" && (
+          <div className="bg-gradient-to-br from-blue-50/90 to-indigo-50/60 p-4 rounded-xl border border-blue-200/80 space-y-3 shadow-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <div className="p-1.5 bg-blue-600 text-white rounded-lg shadow-xs">
+                  <QrCode className="h-4 w-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-800 leading-tight">Cobro con QR / Transferencia</h4>
+                  <p className="text-[10px] text-slate-500">Mercado Pago, Modo o Banco</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowQrModal(true)}
+                className="px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[10.5px] font-bold rounded-lg transition-all flex items-center space-x-1.5 shadow-xs cursor-pointer"
+                title="Ampliar QR para mostrar al cliente"
+              >
+                <Maximize2 className="h-3 w-3" />
+                <span>Ampliar QR</span>
+              </button>
+            </div>
+
+            <div className="flex items-center space-x-3 bg-white p-3 rounded-xl border border-blue-100 shadow-2xs">
+              <div 
+                className="p-1.5 bg-white rounded-lg border border-slate-200 shadow-xs shrink-0 cursor-pointer hover:border-blue-400 transition-colors" 
+                onClick={() => setShowQrModal(true)}
+                title="Hacé click para ampliar"
+              >
+                <QRCodeSVG
+                  value={`https://link.mercadopago.com.ar/pay?alias=${encodeURIComponent(cbuAlias)}&amount=${cartTotal}&concept=Compra%20JZ`}
+                  size={76}
+                  level="M"
+                />
+              </div>
+              <div className="flex-1 space-y-1 min-w-0">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alias Mercado Pago</span>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(cbuAlias, "alias")}
+                    className="text-[10px] text-blue-600 hover:text-blue-800 font-bold flex items-center space-x-0.5 cursor-pointer"
+                  >
+                    {copiedField === "alias" ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
+                    <span>{copiedField === "alias" ? "¡Copiado!" : "Copiar"}</span>
+                  </button>
+                </div>
+                <div className="text-xs font-mono font-bold text-slate-800 truncate bg-slate-50 px-2 py-1 rounded border border-slate-200/60">
+                  {cbuAlias}
+                </div>
+                <div className="flex items-center justify-between pt-0.5">
+                  <span className="text-[10px] text-slate-500 font-semibold">Monto a abonar:</span>
+                  <span className="text-xs font-mono font-black text-blue-700">${cartTotal.toLocaleString()}</span>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-500 text-center font-medium">
+              📲 Escanea el código con Mercado Pago o cualquier billetera virtual.
+            </p>
+          </div>
+        )}
+
         {/* 4. Invoice Summary totals */}
         <div className="bg-slate-50 p-4.5 border border-slate-100 rounded-xl space-y-2 font-medium">
           <div className="flex justify-between items-center text-xs text-slate-500">
@@ -603,6 +698,94 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
           <span>{loading ? "Procesando Venta..." : "Finalizar Venta & Cobrar"}</span>
         </button>
       </div>
+
+      {/* Fullscreen / Display QR Modal for Customer Scanning */}
+      {showQrModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 max-w-sm w-full overflow-hidden text-center flex flex-col items-center p-6 space-y-5 relative">
+            
+            {/* Close Button */}
+            <button
+              onClick={() => setShowQrModal(false)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition-all cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Header Badge */}
+            <div className="space-y-1 pt-2">
+              <div className="inline-flex items-center space-x-1.5 px-3 py-1 bg-blue-50 border border-blue-200/80 rounded-full text-blue-700 text-xs font-bold">
+                <QrCode className="h-3.5 w-3.5" />
+                <span>Cobro Digital Mercado Pago / Transferencia</span>
+              </div>
+              <h3 className="text-xl font-black text-slate-900 font-display">J&Z Indumentaria</h3>
+              <p className="text-xs text-slate-500">Escaneá con tu celular para abonar tu compra</p>
+            </div>
+
+            {/* Total Amount Banner */}
+            <div className="w-full bg-slate-900 text-white py-3 px-4 rounded-2xl space-y-0.5 shadow-md">
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest block">Monto Total a Pagar</span>
+              <div className="text-2xl font-black font-mono text-emerald-400">
+                ${cartTotal.toLocaleString("es-AR")}
+              </div>
+            </div>
+
+            {/* QR Code Container */}
+            <div className="p-4 bg-white rounded-2xl border-2 border-blue-500/30 shadow-lg relative group">
+              <QRCodeSVG
+                value={`https://link.mercadopago.com.ar/pay?alias=${encodeURIComponent(cbuAlias)}&amount=${cartTotal}&concept=Compra%20JZ`}
+                size={210}
+                level="M"
+                includeMargin={true}
+              />
+              <div className="text-[10px] font-bold text-slate-400 mt-2 flex items-center justify-center space-x-1">
+                <Smartphone className="h-3 w-3 text-blue-600" />
+                <span>Compatible con MP, Modo y Billeteras Virtuales</span>
+              </div>
+            </div>
+
+            {/* Alias / CBU Copy Box */}
+            <div className="w-full space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 text-left">
+              <div className="flex justify-between items-center text-xs">
+                <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Alias Mercado Pago:</span>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(cbuAlias, "aliasModal")}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center space-x-1 cursor-pointer"
+                >
+                  {copiedField === "aliasModal" ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                  <span>{copiedField === "aliasModal" ? "¡Copiado!" : "Copiar"}</span>
+                </button>
+              </div>
+              <div className="font-mono text-sm font-black text-slate-800 bg-white p-2 rounded-xl border border-slate-200 tracking-wide text-center">
+                {cbuAlias}
+              </div>
+
+              {/* Editable CBU/Alias accordion */}
+              <div className="pt-1">
+                <label className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wide block mb-1">
+                  Configurar Alias de Cobro:
+                </label>
+                <input
+                  type="text"
+                  value={cbuAlias}
+                  onChange={(e) => handleSaveQrConfig(e.target.value, cbuNumber)}
+                  placeholder="Ej. JZ.INDUMENTARIA.MP"
+                  className="w-full text-xs font-bold px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Action buttons */}
+            <button
+              onClick={() => setShowQrModal(false)}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl transition-all shadow-md cursor-pointer"
+            >
+              Listo / Volver a Venta
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
