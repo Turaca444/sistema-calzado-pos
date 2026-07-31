@@ -7,7 +7,6 @@ import {
   Users, 
   PlusCircle, 
   History, 
-  Terminal, 
   Sparkles,
   UserCheck,
   AlertCircle,
@@ -35,13 +34,26 @@ import {
   ShieldCheck,
   FileText,
   Download,
+  Upload,
+  Database,
   Printer,
   AlertTriangle,
   Camera,
-  Image as ImageIcon
+  Image as ImageIcon,
+  BookOpen,
+  RotateCcw,
+  KeyRound,
+  Copy,
+  Eye,
+  EyeOff,
+  Activity,
+  Lock,
+  RefreshCw,
+  Calculator
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { Tenant, UserRole, User as UserType, LoginLog } from "../types";
+import { Tenant, UserRole, User as UserType, LoginLog, Product, Customer, Sale, DailyClosing } from "../types";
+import CierreCajaModal from "./CierreCajaModal";
 
 interface LayoutProps {
   currentView: string;
@@ -59,13 +71,19 @@ interface LayoutProps {
   users: UserType[];
   activeUserId: string;
   onUserChange: (id: string) => void;
-  onAddUser: (name: string, email: string, role: UserRole, avatarUrl?: string) => Promise<void>;
-  onUpdateUser: (id: string, name: string, email: string, role: UserRole, avatarUrl?: string) => Promise<void>;
+  onAddUser: (name: string, email: string, role: UserRole, avatarUrl?: string, password?: string) => Promise<void>;
+  onUpdateUser: (id: string, name: string, email: string, role: UserRole, avatarUrl?: string, password?: string) => Promise<void>;
   onDeleteUser: (id: string) => Promise<void>;
   onLogout?: () => void;
   loginLogs?: LoginLog[];
   onClearLoginLogs?: () => Promise<void>;
   onDeleteSingleLog?: (id: string) => Promise<void>;
+  products?: Product[];
+  customers?: Customer[];
+  sales?: Sale[];
+  onClearDatabase?: () => Promise<void>;
+  onRestoreDatabase?: (data: any) => Promise<void>;
+  onSeedDemoDatabase?: () => Promise<void>;
 }
 
 export default function Layout({ 
@@ -90,7 +108,13 @@ export default function Layout({
   onLogout,
   loginLogs = [],
   onClearLoginLogs,
-  onDeleteSingleLog
+  onDeleteSingleLog,
+  products = [],
+  customers = [],
+  sales = [],
+  onClearDatabase,
+  onRestoreDatabase,
+  onSeedDemoDatabase
 }: LayoutProps) {
   
   const [showManageUsers, setShowManageUsers] = React.useState(false);
@@ -105,10 +129,20 @@ export default function Layout({
   const [editEmail, setEditEmail] = React.useState("");
   const [editRole, setEditRole] = React.useState<UserRole>("vendedor");
   const [editAvatarUrl, setEditAvatarUrl] = React.useState("");
+  const [editPassword, setEditPassword] = React.useState("");
   const [newUserName, setNewUserName] = React.useState("");
   const [newUserEmail, setNewUserEmail] = React.useState("");
   const [newUserRole, setNewUserRole] = React.useState<UserRole>("vendedor");
   const [newUserAvatarUrl, setNewUserAvatarUrl] = React.useState("");
+  const [newUserPassword, setNewUserPassword] = React.useState("");
+  const [showPassMap, setShowPassMap] = React.useState<Record<string, boolean>>({});
+  const [copiedPassUserId, setCopiedPassUserId] = React.useState<string | null>(null);
+
+  const generateRandomPassword = (role: UserRole = "vendedor") => {
+    const prefix = role === "administrador" ? "Admin" : "Vend";
+    const num = Math.floor(1000 + Math.random() * 9000);
+    return `${prefix}-${num}`;
+  };
   const [deletingLogId, setDeletingLogId] = React.useState<string | null>(null);
   const [showConfirmClearAll, setShowConfirmClearAll] = React.useState(false);
 
@@ -116,18 +150,281 @@ export default function Layout({
   const [quickPhotoUser, setQuickPhotoUser] = React.useState<UserType | null>(null);
   const [quickPhotoUrl, setQuickPhotoUrl] = React.useState<string>("");
 
+  // Database Modal & Cierre de Caja state & helper handlers
+  const [showDatabaseModal, setShowDatabaseModal] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [showCierreCajaModal, setShowCierreCajaModal] = useState(false);
+  const [securityData, setSecurityData] = useState<any>(null);
+  const [loadingSecurity, setLoadingSecurity] = useState(false);
+
+  const handleSaveDailyClosing = async (closing: DailyClosing) => {
+    try {
+      await fetch("/api/daily-closings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-tenant-id": activeTenantId
+        },
+        body: JSON.stringify(closing)
+      });
+    } catch (e) {
+      console.error("Error al guardar cierre de caja:", e);
+    }
+  };
+
+  const fetchSecurityStatus = async () => {
+    setLoadingSecurity(true);
+    try {
+      const res = await fetch("/api/security/status");
+      if (res.ok) {
+        const data = await res.json();
+        setSecurityData(data);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoadingSecurity(false);
+    }
+  };
+
+  const handleClearSecurityLockouts = async () => {
+    try {
+      const res = await fetch("/api/security/clear-lockouts", { method: "POST" });
+      if (res.ok) {
+        await fetchSecurityStatus();
+        alert("✅ Escudo de seguridad y bloqueos de IP reiniciados correctamente.");
+      }
+    } catch (e) {
+      alert("Error al reiniciar escudo de seguridad");
+    }
+  };
+
+  const handleDownloadJSONBackup = async () => {
+    try {
+      const res = await fetch("/api/database/backup", {
+        headers: { "x-tenant-id": activeTenantId }
+      });
+      if (!res.ok) throw new Error("Error descargando respaldo");
+      const data = await res.json();
+      const jsonStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const todayStr = new Date().toISOString().split("T")[0];
+      const currentTenantObj = tenants.find(t => t.id === activeTenantId);
+      const tenantNameClean = (currentTenantObj?.name || "Comercio").replace(/\s+/g, "_");
+      link.href = url;
+      link.download = `Base_de_Datos_${tenantNameClean}_${todayStr}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Error al descargar la base de datos.");
+    }
+  };
+
+  const handleFileRestore = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const content = evt.target?.result as string;
+        const parsed = JSON.parse(content);
+        if (!parsed.products || !parsed.customers || !parsed.sales) {
+          alert("El archivo no posee la estructura requerida de copia de seguridad (se requieren las secciones 'products', 'customers' y 'sales').");
+          return;
+        }
+        if (onRestoreDatabase) {
+          await onRestoreDatabase(parsed);
+          alert("¡Base de datos restaurada correctamente desde el archivo!");
+          setShowDatabaseModal(false);
+        }
+      } catch (err) {
+        alert("Error al procesar el archivo. Asegúrese de que sea un archivo .json válido.");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleClearClick = async () => {
+    if (window.confirm("⚠️ ADVERTENCIA: ¿Está seguro de que desea VACIAR toda la base de datos (artículos, clientes y ventas)?\n\nQuedará el sistema completamente EN BLANCO para ingresar sus propios clientes, artículos y ventas desde cero.\n\nRecomendación: Descargue primero una Copia de Seguridad JSON.")) {
+      if (onClearDatabase) {
+        await onClearDatabase();
+        alert("✅ Base de datos vaciada con éxito. Ahora puede empezar a registrar sus productos y clientes en blanco.");
+        setShowDatabaseModal(false);
+      }
+    }
+  };
+
+  const generateCierreJornadaPDF = (
+    tenantName: string,
+    salesList: Sale[],
+    productsList: Product[],
+    customersList: Customer[]
+  ) => {
+    try {
+      const doc = new jsPDF();
+      const todayStr = new Date().toLocaleDateString("es-AR", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric"
+      });
+      const timeStr = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+
+      // Header styling
+      doc.setFillColor(15, 23, 42);
+      doc.rect(0, 0, 210, 32, "F");
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.setFont("helvetica", "bold");
+      doc.text(`CIERRE DE JORNADA Y PLANILLA DE CAJA`, 14, 16);
+
+      doc.setFontSize(9.5);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Comercio: ${tenantName} | Fecha: ${todayStr} - ${timeStr} hs`, 14, 25);
+
+      // Filter today's sales
+      const todayIso = new Date().toISOString().split("T")[0];
+      const todaySales = salesList.filter(s => s.date.startsWith(todayIso));
+      const activeSales = todaySales;
+
+      // Financial Metrics
+      const totalRevenue = activeSales.reduce((sum, s) => sum + s.total, 0);
+      const totalCash = activeSales.filter(s => s.paymentMethod === "contado").reduce((sum, s) => sum + s.total, 0);
+      const totalTransfer = activeSales.filter(s => s.paymentMethod === "transferencia").reduce((sum, s) => sum + s.total, 0);
+      const totalDebts = activeSales.filter(s => s.paymentMethod === "cuenta_corriente").reduce((sum, s) => sum + (s.debtAmount || 0), 0);
+
+      let totalCost = 0;
+      activeSales.forEach(s => {
+        s.items.forEach(it => {
+          totalCost += (it.cost || 0) * it.quantity;
+        });
+      });
+      const estimatedProfit = totalRevenue - totalCost;
+
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("Resumen Financiero de la Jornada", 14, 42);
+
+      autoTable(doc, {
+        startY: 46,
+        head: [["Concepto / Medio de Pago", "Cantidad de Ventas", "Monto Total ($ ARS)"]],
+        body: [
+          ["Cobrado en Efectivo / Contado", activeSales.filter(s => s.paymentMethod === "contado").length.toString(), `$${totalCash.toLocaleString("es-AR")}`],
+          ["Cobrado por Transferencia / MP", activeSales.filter(s => s.paymentMethod === "transferencia").length.toString(), `$${totalTransfer.toLocaleString("es-AR")}`],
+          ["Vendido en Fiado / Cta Cte (Pendiente)", activeSales.filter(s => s.paymentMethod === "cuenta_corriente").length.toString(), `$${totalDebts.toLocaleString("es-AR")}`],
+          ["TOTAL GENERAL FACTURADO", activeSales.length.toString(), `$${totalRevenue.toLocaleString("es-AR")}`],
+          ["GANANCIA ESTIMADA DEL DÍA", "-", `$${estimatedProfit.toLocaleString("es-AR")}`]
+        ],
+        theme: "striped",
+        headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: "bold" },
+        footStyles: { fillColor: [241, 245, 249], textColor: [15, 23, 42], fontStyle: "bold" }
+      });
+
+      // Detailed Table of Sales
+      let nextY = (doc as any).lastAutoTable.finalY + 10;
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text("Detalle de Comprobantes Emitidos Hoy", 14, nextY);
+
+      const salesRows = activeSales.map(s => {
+        const itemsText = s.items.map(i => `${i.quantity}x ${i.productName}`).join(", ");
+        const payStr = s.paymentMethod === "contado" ? "Efectivo / Contado" : (s.paymentMethod === "transferencia" ? "Transferencia / MP" : "Cuenta Corriente");
+        return [
+          s.invoiceNumber || `#${s.id}`,
+          new Date(s.date).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }),
+          s.customerName,
+          itemsText,
+          payStr,
+          `$${s.total.toLocaleString("es-AR")}`
+        ];
+      });
+
+      autoTable(doc, {
+        startY: nextY + 4,
+        head: [["Comprobante", "Hora", "Cliente", "Artículos", "Pago", "Total"]],
+        body: salesRows.length > 0 ? salesRows : [["-", "-", "Sin ventas registradas en la jornada", "-", "-", "$0"]],
+        theme: "grid",
+        headStyles: { fillColor: [30, 41, 59], textColor: [255, 255, 255] },
+        styles: { fontSize: 8 }
+      });
+
+      nextY = (doc as any).lastAutoTable.finalY + 10;
+      const lowStock = productsList.filter(p => p.stock <= p.minStock);
+
+      doc.setFontSize(9.5);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Inventario: ${productsList.length} artículos en catálogo. ${lowStock.length} en alerta de stock bajo.`, 14, nextY);
+
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setDrawColor(203, 213, 225);
+      doc.line(20, pageHeight - 30, 80, pageHeight - 30);
+      doc.line(130, pageHeight - 30, 190, pageHeight - 30);
+
+      doc.setFontSize(8);
+      doc.setFont("helvetica", "normal");
+      doc.text("Firma Vendedor / Operador de Caja", 25, pageHeight - 24);
+      doc.text("Firma y Conformidad Dueño del Local", 135, pageHeight - 24);
+
+      doc.save(`Cierre_Jornada_${tenantName.replace(/\s+/g, "_")}_${todayIso}.pdf`);
+    } catch (err) {
+      console.error("Error generando PDF de cierre de jornada:", err);
+      alert("Ocurrió un error al generar el PDF de cierre de jornada.");
+    }
+  };
+
   const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setUrl: (url: string) => void) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        alert("La imagen excede el límite de 5MB. Por favor elige una imagen más pequeña.");
+      if (file.size > 15 * 1024 * 1024) {
+        alert("La imagen excede el límite de 15MB. Por favor elige una imagen más pequeña.");
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          setUrl(reader.result);
-        }
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          const MAX_SIZE = 400;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height = Math.round((height * MAX_SIZE) / width);
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width = Math.round((width * MAX_SIZE) / height);
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressedDataUrl = canvas.toDataURL("image/jpeg", 0.82);
+            setUrl(compressedDataUrl);
+          } else {
+            if (typeof event.target?.result === "string") {
+              setUrl(event.target.result);
+            }
+          }
+        };
+        img.onerror = () => {
+          if (typeof event.target?.result === "string") {
+            setUrl(event.target.result);
+          }
+        };
+        img.src = event.target?.result as string;
       };
       reader.readAsDataURL(file);
     }
@@ -250,7 +547,7 @@ export default function Layout({
     { id: "customers", label: "Clientes", icon: Users, badge: pendingDebtsCount > 0 ? pendingDebtsCount : undefined, badgeColor: "bg-red-500" },
     { id: "sales-new", label: "Nueva Venta", icon: PlusCircle, highlight: true },
     { id: "history", label: "Historial", icon: History },
-    { id: "api-docs", label: "API Sandbox", icon: Terminal },
+    { id: "user-manual", label: "Manual de Usuario", icon: BookOpen },
   ];
 
   // Resolve active tenant details
@@ -495,7 +792,7 @@ export default function Layout({
             <button
               type="button"
               onClick={() => setShowLoginLogsModal(true)}
-              className="flex items-center space-x-2 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200/80 transition-all text-xs font-semibold shadow-xs"
+              className="flex items-center space-x-2 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl border border-indigo-200/80 transition-all text-xs font-semibold shadow-xs cursor-pointer"
               title="Ver Registro de Ingresos de Administradores y Vendedores (Fecha y Hora)"
             >
               <Clock className="h-3.5 w-3.5 text-indigo-600" />
@@ -505,6 +802,75 @@ export default function Layout({
                   {loginLogs.length > 0 ? loginLogs[0].dateFormatted : "Sin ingresos"}
                 </span>
               </div>
+            </button>
+
+            {/* Header Security Shield Button */}
+            <button
+              type="button"
+              onClick={() => {
+                fetchSecurityStatus();
+                setShowSecurityModal(true);
+              }}
+              className="flex items-center space-x-2 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl border border-slate-700 transition-all text-xs font-bold shadow-xs cursor-pointer group"
+              title="Escudo de Seguridad API y Monitor de Hackeos / Bloqueos en Tiempo Real"
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+              <div className="hidden lg:flex flex-col text-left leading-none">
+                <span className="text-[10px] font-black text-white flex items-center space-x-1">
+                  <span>Escudo API</span>
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                </span>
+                <span className="text-[8.5px] text-emerald-400 font-mono font-bold">Protegido v2.5</span>
+              </div>
+            </button>
+
+            {/* Header Balance / Cierre de Caja Button */}
+            <button
+              type="button"
+              onClick={() => setShowCierreCajaModal(true)}
+              className="flex items-center space-x-2 px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl border border-emerald-500/50 transition-all text-xs font-black shadow-sm cursor-pointer group"
+              title="Realizar Arqueo y Balance de Caja del Día (Cierre de Jornada)"
+            >
+              <Calculator className="h-4 w-4 text-emerald-200 group-hover:scale-110 transition-transform" />
+              <div className="flex flex-col text-left leading-none">
+                <span className="text-[10px] font-black text-white flex items-center space-x-1">
+                  <span>Balance de Caja</span>
+                </span>
+                <span className="text-[8.5px] text-emerald-100 font-mono font-bold">
+                  Arqueo Diario
+                </span>
+              </div>
+            </button>
+
+            {/* Header Database & Daily Closing Button */}
+            <button
+              type="button"
+              onClick={() => setShowDatabaseModal(true)}
+              className="flex items-center space-x-2 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 rounded-xl border border-emerald-200/90 transition-all text-xs font-bold shadow-xs cursor-pointer group"
+              title="Cierre de Jornada y Gestión de Base de Datos para el Dueño del Local"
+            >
+              <Database className="h-3.5 w-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
+              <div className="hidden sm:flex flex-col text-left leading-none">
+                <span className="text-[10px] font-black text-emerald-950">Cierre & DB</span>
+                <span className="text-[8.5px] text-emerald-700 font-mono font-bold">
+                  {products.length} art | {sales.length} vtas
+                </span>
+              </div>
+            </button>
+
+            {/* Header User Manual Button */}
+            <button
+              type="button"
+              onClick={() => setView("user-manual")}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border transition-all text-xs font-bold shadow-xs cursor-pointer ${
+                currentView === "user-manual"
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-slate-200 hover:border-indigo-200"
+              }`}
+              title="Abrir Manual de Usuario y Descargar Guía de Botones PDF"
+            >
+              <BookOpen className="h-3.5 w-3.5 text-indigo-600" />
+              <span className="hidden sm:inline text-[11px]">Manual de Usuario</span>
             </button>
           </div>
 
@@ -730,7 +1096,7 @@ export default function Layout({
                       <div key={u.id} className="p-4 flex flex-col justify-between gap-3 bg-white hover:bg-slate-50/40 transition-all">
                         {isEditing ? (
                           <div className="space-y-3 text-left">
-                            <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
                               <div>
                                 <label className="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">Nombre</label>
                                 <input
@@ -759,6 +1125,26 @@ export default function Layout({
                                   <option value="administrador">Administrador</option>
                                   <option value="vendedor">Vendedor</option>
                                 </select>
+                              </div>
+                              <div>
+                                <label className="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">Clave API / Login</label>
+                                <div className="flex items-center space-x-1">
+                                  <input
+                                    type="text"
+                                    value={editPassword}
+                                    onChange={(e) => setEditPassword(e.target.value)}
+                                    className="w-full px-2 py-1.5 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-mono text-[10px]"
+                                    placeholder="Clave..."
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditPassword(generateRandomPassword(editRole))}
+                                    className="p-1.5 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-xl text-[9px] font-bold shrink-0 flex items-center space-x-0.5"
+                                    title="Generar nueva clave"
+                                  >
+                                    <KeyRound className="h-3 w-3" />
+                                  </button>
+                                </div>
                               </div>
                               <div>
                                 <label className="block text-[8px] font-bold text-slate-400 uppercase mb-0.5">Foto de Perfil</label>
@@ -833,8 +1219,8 @@ export default function Layout({
                                 {u.role === "administrador" ? "AD" : "VD"}
                               </div>
                             )}
-                            <div className="truncate">
-                              <div className="flex items-center space-x-2">
+                            <div className="truncate flex-1">
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <span className="text-xs font-bold text-slate-800">{u.name}</span>
                                 <span className={`text-[8px] font-extrabold px-1.5 py-0.5 rounded-full uppercase ${
                                   u.role === "administrador" ? "bg-indigo-100 text-indigo-700" : "bg-emerald-100 text-emerald-700"
@@ -847,7 +1233,43 @@ export default function Layout({
                                   </span>
                                 )}
                               </div>
-                              <span className="block text-[10px] text-slate-400 font-mono truncate">{u.email}</span>
+                              <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                                <span className="text-[10px] text-slate-400 font-mono truncate">{u.email}</span>
+                                <div className="inline-flex items-center space-x-1.5 bg-amber-50/70 border border-amber-200/60 px-2 py-0.5 rounded-lg text-[10px]">
+                                  <KeyRound className="h-3 w-3 text-amber-600 shrink-0" />
+                                  <span className="font-mono font-bold text-amber-900">
+                                    {showPassMap[u.id] ? (u.password || "Sin clave") : (u.password ? "••••••••" : "Sin clave")}
+                                  </span>
+                                  {u.password && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowPassMap(prev => ({ ...prev, [u.id]: !prev[u.id] }))}
+                                        className="text-amber-700 hover:text-amber-900 p-0.5 cursor-pointer ml-1"
+                                        title={showPassMap[u.id] ? "Ocultar clave" : "Ver clave API"}
+                                      >
+                                        {showPassMap[u.id] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(u.password || "");
+                                          setCopiedPassUserId(u.id);
+                                          setTimeout(() => setCopiedPassUserId(null), 2000);
+                                        }}
+                                        className="text-amber-800 hover:text-black p-0.5 font-bold flex items-center space-x-0.5 cursor-pointer"
+                                        title="Copiar Clave al Portapapeles"
+                                      >
+                                        {copiedPassUserId === u.id ? (
+                                          <span className="text-[9px] text-emerald-600 font-black">¡Copiado!</span>
+                                        ) : (
+                                          <Copy className="h-3 w-3" />
+                                        )}
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                           </div>
                         )}
@@ -863,7 +1285,7 @@ export default function Layout({
                                     alert("El nombre no puede estar vacío");
                                     return;
                                   }
-                                  await onUpdateUser(u.id, editName, editEmail, editRole, editAvatarUrl);
+                                  await onUpdateUser(u.id, editName, editEmail, editRole, editAvatarUrl, editPassword);
                                   setEditingUserId(null);
                                 }}
                                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-all text-xs font-bold flex items-center space-x-1"
@@ -891,12 +1313,13 @@ export default function Layout({
                                   setEditEmail(u.email);
                                   setEditRole(u.role);
                                   setEditAvatarUrl(u.avatarUrl || u.photoUrl || "");
+                                  setEditPassword(u.password || "");
                                 }}
                                 className="p-1.5 bg-slate-50 text-slate-600 border border-slate-200 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-100 rounded-lg transition-all flex items-center space-x-1"
                                 title="Editar datos y foto de perfil"
                               >
                                 <Edit className="h-3.5 w-3.5" />
-                                <span className="text-[10px] font-medium hidden sm:inline">Editar / Foto</span>
+                                <span className="text-[10px] font-medium hidden sm:inline">Editar / Clave</span>
                               </button>
                               
                               <button
@@ -918,12 +1341,18 @@ export default function Layout({
 
               {/* Add New User Section */}
               <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200/60 space-y-3.5">
-                <div className="flex items-center space-x-2 text-left">
-                  <Plus className="h-4 w-4 text-indigo-500" />
-                  <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">Añadir Nuevo Vendedor / Admin con Foto</h4>
+                <div className="flex items-center justify-between text-left">
+                  <div className="flex items-center space-x-2">
+                    <Plus className="h-4 w-4 text-indigo-500" />
+                    <h4 className="text-xs font-black uppercase text-slate-800 tracking-wider">Añadir Nuevo Vendedor / Admin con Clave API</h4>
+                  </div>
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100/80 border border-amber-200/80 px-2 py-0.5 rounded-full flex items-center space-x-1">
+                    <ShieldCheck className="h-3 w-3" />
+                    <span>Acceso Seguro</span>
+                  </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-left">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-left">
                   <div>
                     <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Nombre Completo *</label>
                     <input
@@ -948,12 +1377,41 @@ export default function Layout({
                     <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Rol / Permisos *</label>
                     <select
                       value={newUserRole}
-                      onChange={(e) => setNewUserRole(e.target.value as UserRole)}
+                      onChange={(e) => {
+                        const r = e.target.value as UserRole;
+                        setNewUserRole(r);
+                        if (!newUserPassword) {
+                          setNewUserPassword(generateRandomPassword(r));
+                        }
+                      }}
                       className="w-full px-3 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white font-medium"
                     >
                       <option value="vendedor">Vendedor (Sellers)</option>
                       <option value="administrador">Administrador</option>
                     </select>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1 flex items-center justify-between">
+                      <span>Contraseña API *</span>
+                    </label>
+                    <div className="flex items-center space-x-1">
+                      <input
+                        type="text"
+                        placeholder="Ej. Vend-8492"
+                        value={newUserPassword}
+                        onChange={(e) => setNewUserPassword(e.target.value)}
+                        className="w-full px-2.5 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white font-mono font-bold text-indigo-700"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setNewUserPassword(generateRandomPassword(newUserRole))}
+                        className="px-2 py-2 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-xl text-[10px] font-bold shrink-0 flex items-center space-x-1 transition-all cursor-pointer"
+                        title="Generar contraseña automáticamente"
+                      >
+                        <KeyRound className="h-3 w-3 text-amber-600" />
+                        <span className="hidden sm:inline">Generar</span>
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Foto de Perfil</label>
@@ -965,7 +1423,7 @@ export default function Layout({
                         onChange={(e) => setNewUserAvatarUrl(e.target.value)}
                         className="w-full px-2.5 py-2 text-xs border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 bg-white font-mono text-[10px]"
                       />
-                      <label className="px-2.5 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-bold cursor-pointer shrink-0 flex items-center space-x-1 transition-all" title="Subir desde la PC/Celular">
+                      <label className="px-2 py-2 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 rounded-xl text-xs font-bold cursor-pointer shrink-0 flex items-center space-x-1 transition-all" title="Subir desde la PC/Celular">
                         <ImageIcon className="h-3.5 w-3.5" />
                         <span className="hidden sm:inline">Subir</span>
                         <input
@@ -1011,16 +1469,21 @@ export default function Layout({
                       alert("Por favor introduce un nombre para el nuevo personal");
                       return;
                     }
-                    await onAddUser(newUserName, newUserEmail, newUserRole, newUserAvatarUrl);
+                    const passToSave = newUserPassword.trim() || generateRandomPassword(newUserRole);
+                    await onAddUser(newUserName, newUserEmail, newUserRole, newUserAvatarUrl, passToSave);
+                    
+                    alert(`¡Vendedor / Personal registrado exitosamente!\n\n👤 Nombre: ${newUserName}\n🔑 Contraseña API / Login: ${passToSave}\n\nProporcione esta contraseña al vendedor para ingresar.`);
+                    
                     setNewUserName("");
                     setNewUserEmail("");
                     setNewUserRole("vendedor");
                     setNewUserAvatarUrl("");
+                    setNewUserPassword("");
                   }}
                   className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-600/15 flex items-center justify-center space-x-1.5 transition-all cursor-pointer"
                 >
                   <PlusCircle className="h-4 w-4" />
-                  <span>Registrar Personal con Foto en este Local</span>
+                  <span>Registrar Vendedor / Admin con Contraseña API</span>
                 </button>
               </div>
 
@@ -1661,6 +2124,344 @@ export default function Layout({
           </div>
         </div>
       )}
+
+      {/* Database Management & Cierre de Jornada Modal */}
+      {showDatabaseModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-2xl w-full border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30 shadow-inner">
+                  <Database className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black font-display tracking-tight">Cierre de Jornada y Base de Datos</h3>
+                  <p className="text-xs text-slate-300 font-medium">Resguardo diario, respaldos en JSON e inicio en blanco para el comercio</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDatabaseModal(false)}
+                className="text-slate-400 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-all cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Current Database Summary Bar */}
+            <div className="bg-slate-100 border-b border-slate-200 p-4 shrink-0">
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Artículos</span>
+                  <span className="text-lg font-extrabold text-slate-900 font-mono">{products.length}</span>
+                </div>
+                <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Clientes</span>
+                  <span className="text-lg font-extrabold text-indigo-600 font-mono">{customers.length}</span>
+                </div>
+                <div className="bg-white p-3 rounded-2xl border border-slate-200/80 shadow-xs">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Ventas Registradas</span>
+                  <span className="text-lg font-extrabold text-emerald-600 font-mono">{sales.length}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              {/* Option 1: Cierre de Jornada y Resguardo para el Dueño */}
+              <div className="p-5 bg-emerald-50/60 border border-emerald-200/90 rounded-2xl space-y-3">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-1.5 bg-emerald-600 text-white rounded-lg">
+                    <Download className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-emerald-950">1. Cierre de Horario & Guardado de Base de Datos</h4>
+                    <p className="text-xs text-emerald-800">Al finalizar el horario del negocio, guarde toda la información como una base de datos en su dispositivo o exporte el PDF de cierre diario.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleDownloadJSONBackup}
+                    className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all cursor-pointer flex items-center justify-center space-x-2"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span>Descargar Backup Base de Datos (.JSON)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => generateCierreJornadaPDF(currentTenant?.name || "Comercio", sales, products, customers)}
+                    className="w-full py-3 px-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer flex items-center justify-center space-x-2"
+                  >
+                    <FileText className="h-4 w-4 text-emerald-400" />
+                    <span>Planilla PDF Cierre de Jornada</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Option 2: Iniciar en Blanco (Vaciar para Empezar de Cero) */}
+              <div className="p-5 bg-amber-50/60 border border-amber-200/90 rounded-2xl space-y-3">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-1.5 bg-amber-600 text-white rounded-lg">
+                    <Trash2 className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-amber-950">2. Iniciar en Blanco (Sistema Limpio sin Datos Demo)</h4>
+                    <p className="text-xs text-amber-800">Si desea comenzar a ingresar sus propios clientes, artículos y ventas desde cero, vacíe el sistema para dejarlo totalmente en blanco.</p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleClearClick}
+                  className="w-full py-3 px-4 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-md shadow-amber-600/20 transition-all cursor-pointer flex items-center justify-center space-x-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>Vaciar Base de Datos (Quedar en Blanco para Ingreso)</span>
+                </button>
+              </div>
+
+              {/* Option 3: Restaurar o Cargar Base de Datos de Resguardo */}
+              <div className="p-5 bg-indigo-50/60 border border-indigo-200/90 rounded-2xl space-y-3">
+                <div className="flex items-center space-x-2.5">
+                  <div className="p-1.5 bg-indigo-600 text-white rounded-lg">
+                    <Upload className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-extrabold text-indigo-950">3. Restaurar / Cargar Base de Datos Guardada</h4>
+                    <p className="text-xs text-indigo-800">Recupere un respaldo de base de datos anteriormente guardado en su computadora o restablezca datos de prueba.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <label className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center justify-center space-x-2">
+                    <Upload className="h-4 w-4" />
+                    <span>Cargar Archivo de Backup (.JSON)</span>
+                    <input
+                      type="file"
+                      accept=".json"
+                      className="hidden"
+                      onChange={handleFileRestore}
+                    />
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (window.confirm("¿Desea restablecer los datos demo de ejemplo en la base de datos?")) {
+                        if (onSeedDemoDatabase) {
+                          await onSeedDemoDatabase();
+                          alert("Cargados los artículos, clientes y ventas demo de ejemplo.");
+                          setShowDatabaseModal(false);
+                        }
+                      }
+                    }}
+                    className="w-full py-3 px-4 bg-white hover:bg-indigo-50 text-indigo-900 border border-indigo-300 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center space-x-2"
+                  >
+                    <RotateCcw className="h-4 w-4 text-indigo-600" />
+                    <span>Restablecer Datos Demo</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+              <span className="text-[10px] text-slate-500 font-mono">
+                Multitenant Active: {activeTenantId}
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowDatabaseModal(false)}
+                className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* API Security Shield & Audit Modal */}
+      {showSecurityModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-3xl w-full border border-slate-200 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/30 shadow-inner">
+                  <ShieldCheck className="h-6 w-6" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-base font-black font-display tracking-tight">Escudo de Seguridad API & Anti-Hackeo</h3>
+                    <span className="text-[9px] bg-emerald-500/20 text-emerald-400 font-extrabold px-2 py-0.5 rounded-md border border-emerald-500/30">
+                      ACTIVO v2.5
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 font-medium">Monitoreo de tráfico, sanitización estricta y bloqueo de ataques en tiempo real</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSecurityModal(false)}
+                className="text-slate-400 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-all cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Metrics Dashboard Banner */}
+            <div className="bg-slate-900 border-b border-slate-800 p-4 shrink-0 text-white">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 flex items-center space-x-3">
+                  <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20 shrink-0">
+                    <Activity className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Estado del Servidor</span>
+                    <span className="text-xs font-black text-emerald-400 font-mono">100% BLINDADO</span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 flex items-center space-x-3">
+                  <div className="p-2 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20 shrink-0">
+                    <Lock className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">Ataques Neutralizados</span>
+                    <span className="text-base font-black text-amber-400 font-mono">
+                      {securityData?.totalBlockedAttacks || 0} Intentos
+                    </span>
+                  </div>
+                </div>
+
+                <div className="bg-slate-950/80 p-3 rounded-2xl border border-slate-800 flex items-center space-x-3">
+                  <div className="p-2 bg-indigo-500/10 text-indigo-400 rounded-xl border border-indigo-500/20 shrink-0">
+                    <Shield className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-bold text-slate-400 uppercase block">IPs Bloqueadas Ahora</span>
+                    <span className="text-base font-black text-indigo-300 font-mono">
+                      {securityData?.activeLockoutsCount || 0} IPs
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-5 overflow-y-auto flex-1">
+              {/* Active Protection Modules */}
+              <div className="space-y-2">
+                <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center space-x-1.5">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                  <span>Módulos de Protección Activos en la API:</span>
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {securityData?.activeShields?.map((shield: string, idx: number) => (
+                    <div key={idx} className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center space-x-2 text-xs font-semibold text-slate-800">
+                      <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0"></span>
+                      <span>{shield}</span>
+                    </div>
+                  )) || (
+                    <div className="text-xs text-slate-400">Cargando capas de seguridad...</div>
+                  )}
+                </div>
+              </div>
+
+              {/* Security Logs Table */}
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center space-x-1.5">
+                    <Clock className="h-4 w-4 text-indigo-600" />
+                    <span>Registro de Eventos y Amenazas Recientes (Auditoría API)</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={fetchSecurityStatus}
+                    className="p-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-slate-600 text-xs font-bold flex items-center space-x-1 transition-all cursor-pointer"
+                    title="Actualizar registro de seguridad"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${loadingSecurity ? "animate-spin" : ""}`} />
+                    <span>Actualizar</span>
+                  </button>
+                </div>
+
+                <div className="border border-slate-200 rounded-2xl overflow-hidden max-h-60 overflow-y-auto bg-slate-900 text-white">
+                  {securityData?.securityLogs && securityData.securityLogs.length > 0 ? (
+                    <div className="divide-y divide-slate-800">
+                      {securityData.securityLogs.map((log: any) => (
+                        <div key={log.id} className="p-3 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-slate-850 transition-colors">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center space-x-2">
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase ${
+                                log.severity === "CRITICAL" ? "bg-red-500 text-white" :
+                                log.severity === "HIGH" ? "bg-amber-500 text-slate-950" : "bg-indigo-500 text-white"
+                              }`}>
+                                {log.severity}
+                              </span>
+                              <span className="font-mono font-bold text-slate-300 text-[10px]">{log.eventType}</span>
+                              <span className="text-[9px] text-slate-400 font-mono">({log.ip})</span>
+                            </div>
+                            <div className="text-[11px] text-slate-300 font-medium">{log.details}</div>
+                          </div>
+                          <div className="text-[9.5px] text-slate-400 font-mono shrink-0">
+                            {new Date(log.timestamp).toLocaleTimeString("es-AR")} - {new Date(log.timestamp).toLocaleDateString("es-AR")}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-slate-400 space-y-1">
+                      <ShieldCheck className="h-8 w-8 text-emerald-400 mx-auto opacity-80" />
+                      <p className="text-xs font-bold text-slate-200">Sin ataques detectados recientemente</p>
+                      <p className="text-[10px] text-slate-400">El sistema opera en entorno seguro y sin anomalías de tráfico.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-200 flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={handleClearSecurityLockouts}
+                className="px-3.5 py-2 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center space-x-1.5"
+                title="Desbloquear IPs bloqueadas temporalmente por reintentos"
+              >
+                <Lock className="h-3.5 w-3.5 text-amber-700" />
+                <span>Reiniciar Bloqueos de IP</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowSecurityModal(false)}
+                className="px-5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cierre & Balance de Caja Modal */}
+      <CierreCajaModal
+        isOpen={showCierreCajaModal}
+        onClose={() => setShowCierreCajaModal(false)}
+        sales={sales}
+        products={products}
+        customers={customers}
+        users={users}
+        activeUser={activeUser}
+        tenantName={currentTenant?.name || "Comercio"}
+        tenantId={activeTenantId}
+        onSaveDailyClosing={handleSaveDailyClosing}
+      />
     </div>
   );
 }

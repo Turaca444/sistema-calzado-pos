@@ -135,7 +135,7 @@ export default function Dashboard({ products, customers, sales, users = [], setV
         </div>
         <button
           onClick={() => setView("sales-new")}
-          className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm px-5 py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/20"
+          className="flex items-center space-x-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm px-5 py-3 rounded-xl transition-all shadow-lg shadow-indigo-600/10 hover:shadow-indigo-600/20 cursor-pointer"
         >
           <ShoppingBag className="h-4 w-4" />
           <span>Registrar Nueva Venta</span>

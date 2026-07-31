@@ -18,6 +18,7 @@ export interface User {
   tenantId: string;
   avatarUrl?: string;
   photoUrl?: string;
+  password?: string;
 }
 
 export interface Product {
@@ -45,6 +46,7 @@ export interface Customer {
   id: string;
   tenantId: string;
   name: string;
+  dni?: string;
   email: string;
   phone: string;
   debt: number;
@@ -58,11 +60,14 @@ export interface SaleItem {
   productName: string;
   quantity: number;
   price: number;
+  cost?: number;
 }
 
 export interface Sale {
   id: string;
   tenantId: string;
+  invoiceNumber?: string;
+  invoiceSequence?: number;
   date: string;
   customerId: string; // "cust_anonymous" or a customer ID
   customerName: string;
@@ -87,6 +92,25 @@ export interface LoginLog {
   deviceInfo?: string;
 }
 
+export interface DailyClosing {
+  id: string;
+  tenantId: string;
+  date: string;
+  closedAt: string;
+  closedByUserId?: string;
+  closedByUserName: string;
+  initialCash: number;
+  cashSales: number;
+  transferSales: number;
+  creditSales: number;
+  totalSales: number;
+  expenses: number;
+  expectedCash: number;
+  actualCash: number;
+  difference: number;
+  notes?: string;
+}
+
 export interface DBState {
   products: Product[];
   customers: Customer[];
@@ -94,4 +118,5 @@ export interface DBState {
   tenants: Tenant[];
   users: User[];
   loginLogs?: LoginLog[];
+  dailyClosings?: DailyClosing[];
 }

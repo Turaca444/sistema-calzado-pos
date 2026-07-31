@@ -5,7 +5,7 @@ import Products from "./components/Products";
 import Customers from "./components/Customers";
 import SalesNew from "./components/SalesNew";
 import History from "./components/History";
-import APIDocs from "./components/APIDocs";
+import UserManual from "./components/UserManual";
 import Login from "./components/Login";
 import { Product, Customer, Sale, Tenant, UserRole, User, LoginLog } from "./types";
 import { 
@@ -18,6 +18,16 @@ import {
   Coins
 } from "lucide-react";
 import { motion } from "motion/react";
+
+// Helper for safely parsing JSON responses without crashing on non-JSON HTML error bodies
+const safeJson = async (res: Response) => {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { error: text || `Error HTTP ${res.status}` };
+  }
+};
 
 export default function App() {
   const [currentView, setView] = useState<string>("dashboard");
@@ -277,7 +287,7 @@ export default function App() {
   };
 
   // Add User handler
-  const handleAddUser = async (name: string, email: string, role: UserRole, avatarUrl?: string) => {
+  const handleAddUser = async (name: string, email: string, role: UserRole, avatarUrl?: string, password?: string) => {
     try {
       const headers = {
         "x-tenant-id": activeTenantId,
@@ -286,12 +296,12 @@ export default function App() {
       const res = await fetch("/api/users", {
         method: "POST",
         headers,
-        body: JSON.stringify({ name, email, role, avatarUrl })
+        body: JSON.stringify({ name, email, role, avatarUrl, password })
       });
       if (res.ok) {
         await fetchUsers();
       } else {
-        const err = await res.json();
+        const err = await safeJson(res);
         alert(err.error || "Error al añadir usuario");
       }
     } catch (err) {
@@ -300,7 +310,7 @@ export default function App() {
   };
 
   // Update User handler
-  const handleUpdateUser = async (id: string, name: string, email: string, role: UserRole, avatarUrl?: string) => {
+  const handleUpdateUser = async (id: string, name: string, email: string, role: UserRole, avatarUrl?: string, password?: string) => {
     try {
       const headers = {
         "x-tenant-id": activeTenantId,
@@ -309,12 +319,12 @@ export default function App() {
       const res = await fetch(`/api/users/${id}`, {
         method: "PUT",
         headers,
-        body: JSON.stringify({ name, email, role, avatarUrl })
+        body: JSON.stringify({ name, email, role, avatarUrl, password })
       });
       if (res.ok) {
         await fetchUsers();
       } else {
-        const err = await res.json();
+        const err = await safeJson(res);
         alert(err.error || "Error al actualizar usuario");
       }
     } catch (err) {
@@ -336,7 +346,7 @@ export default function App() {
       if (res.ok) {
         await fetchUsers();
       } else {
-        const err = await res.json();
+        const err = await safeJson(res);
         alert(err.error || "Error al eliminar usuario");
       }
     } catch (err) {
@@ -386,7 +396,7 @@ export default function App() {
           setActiveTenant(updated);
         }
       } else {
-        const err = await res.json();
+        const err = await safeJson(res);
         alert(err.error || "Error al actualizar el nombre del comercio");
       }
     } catch (err) {
@@ -445,7 +455,7 @@ export default function App() {
       body: JSON.stringify(prodData)
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await safeJson(res);
       throw new Error(err.error || "Fallo al agregar artículo");
     }
     const newProd = await res.json();
@@ -463,7 +473,7 @@ export default function App() {
       body: JSON.stringify(updates)
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await safeJson(res);
       throw new Error(err.error || "Fallo al actualizar artículo");
     }
     const updatedProd = await res.json();
@@ -479,13 +489,13 @@ export default function App() {
       }
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await safeJson(res);
       throw new Error(err.error || "Fallo al eliminar artículo");
     }
     setProducts((prev) => prev.filter((p) => p.id !== id));
   };
 
-  const handleAddCustomer = async (custData: { name: string; email?: string; phone?: string }) => {
+  const handleAddCustomer = async (custData: { name: string; dni?: string; email?: string; phone?: string }) => {
     const res = await fetch("/api/customers", {
       method: "POST",
       headers: { 
@@ -496,7 +506,7 @@ export default function App() {
       body: JSON.stringify(custData)
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await safeJson(res);
       throw new Error(err.error || "Fallo al registrar cliente");
     }
     const newCust = await res.json();
@@ -514,7 +524,7 @@ export default function App() {
       body: JSON.stringify({ amount })
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await safeJson(res);
       throw new Error(err.error || "Fallo al procesar pago");
     }
     await fetchData();
@@ -529,7 +539,7 @@ export default function App() {
       }
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await safeJson(res);
       throw new Error(err.error || "Fallo al eliminar cliente");
     }
     setCustomers((prev) => prev.filter((c) => c.id !== id));
@@ -552,7 +562,7 @@ export default function App() {
     });
 
     if (!res.ok) {
-      const err = await res.json();
+      const err = await safeJson(res);
       throw new Error(err.error || "Fallo al registrar la venta");
     }
 
@@ -570,10 +580,63 @@ export default function App() {
       }
     });
     if (!res.ok) {
-      const err = await res.json();
+      const err = await safeJson(res);
       throw new Error(err.error || "Fallo al eliminar transacción");
     }
     await fetchData();
+  };
+
+  // Database Management Handlers (Clear for Start/Shift, Restore, Seed Demo)
+  const handleClearDatabase = async () => {
+    try {
+      const res = await fetch("/api/database/clear", {
+        method: "POST",
+        headers: { "x-tenant-id": activeTenantId }
+      });
+      if (!res.ok) {
+        const err = await safeJson(res);
+        throw new Error(err.error || "Fallo al vaciar base de datos");
+      }
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message || "Error al vaciar la base de datos");
+    }
+  };
+
+  const handleRestoreDatabase = async (jsonContent: any) => {
+    try {
+      const res = await fetch("/api/database/restore", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-tenant-id": activeTenantId
+        },
+        body: JSON.stringify(jsonContent)
+      });
+      if (!res.ok) {
+        const err = await safeJson(res);
+        throw new Error(err.error || "Fallo al restaurar la base de datos");
+      }
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message || "Error al restaurar la base de datos");
+    }
+  };
+
+  const handleSeedDemoDatabase = async () => {
+    try {
+      const res = await fetch("/api/database/seed-demo", {
+        method: "POST",
+        headers: { "x-tenant-id": activeTenantId }
+      });
+      if (!res.ok) {
+        const err = await safeJson(res);
+        throw new Error(err.error || "Fallo al cargar datos de prueba");
+      }
+      await fetchData();
+    } catch (err: any) {
+      alert(err.message || "Error al cargar datos de prueba");
+    }
   };
 
   // Badge counters
@@ -622,8 +685,8 @@ export default function App() {
         );
       case "history":
         return <History sales={sales} customers={customers} onDeleteSale={handleDeleteSale} />;
-      case "api-docs":
-        return <APIDocs />;
+      case "user-manual":
+        return <UserManual />;
       default:
         return (
           <Dashboard 
@@ -671,6 +734,12 @@ export default function App() {
       loginLogs={loginLogs}
       onClearLoginLogs={handleClearLoginLogs}
       onDeleteSingleLog={handleDeleteSingleLog}
+      products={products}
+      customers={customers}
+      sales={sales}
+      onClearDatabase={handleClearDatabase}
+      onRestoreDatabase={handleRestoreDatabase}
+      onSeedDemoDatabase={handleSeedDemoDatabase}
     >
       {/* If Tenant subscription is suspended, display the beautiful paywall lockout block */}
       {billingError ? (

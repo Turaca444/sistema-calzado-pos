@@ -16,7 +16,8 @@ import {
   Clock,
   Sparkles,
   Trash2,
-  FileText
+  FileText,
+  IdCard
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -24,7 +25,7 @@ import { Customer, UnpaidItem } from "../types";
 
 interface CustomersProps {
   customers: Customer[];
-  onAddCustomer: (customer: { name: string; email?: string; phone?: string }) => Promise<void>;
+  onAddCustomer: (customer: { name: string; dni?: string; email?: string; phone?: string }) => Promise<void>;
   onPayDebt: (id: string, amount: number) => Promise<void>;
   onDeleteCustomer: (id: string) => Promise<void>;
 }
@@ -42,6 +43,7 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
   // Create customer form state
   const [isNewCustOpen, setIsNewCustOpen] = useState(false);
   const [name, setName] = useState("");
+  const [dni, setDni] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [custError, setCustError] = useState("");
@@ -63,80 +65,82 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
         format: "a4"
       });
 
-      // Top Header Banner
-      doc.setFillColor(79, 70, 229); // Brand color: Indigo-600
+      // Top Header Banner - Professional Slate-900 Dark Theme
+      doc.setFillColor(15, 23, 42); // Slate-900
       doc.rect(0, 0, 210, 42, "F");
 
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(22);
+      doc.setFontSize(20);
       doc.text("J&Z Indumentaria", 15, 18);
 
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(199, 210, 254);
+      doc.setFontSize(9.5);
+      doc.setTextColor(203, 213, 225); // Slate-300
       doc.text("Sistema Integral de Ventas, Clientes y Cta Corriente", 15, 25);
       
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.text(`Fecha Emisión: ${new Date().toLocaleString("es-AR")}`, 140, 18);
-      doc.text(`Clientes Totales: ${customers.length}`, 140, 24);
-      doc.text("Reporte: Saldos de Clientes", 140, 30);
+      doc.setFontSize(8.5);
+      doc.text(`Fecha Emisión: ${new Date().toLocaleString("es-AR")}`, 135, 18);
+      doc.text(`Clientes Totales: ${customers.length}`, 135, 24);
+      doc.text("Reporte: Cartera y Saldos Globales", 135, 30);
 
       // Report Header Section
-      doc.setTextColor(30, 41, 59); // Slate-800
+      doc.setTextColor(15, 23, 42); // Slate-900
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.text("REPORTE GENERAL DE SALDOS Y CUENTAS CORRIENTES", 15, 54);
+      doc.setFontSize(13);
+      doc.text("REPORTE GENERAL DE SALDOS Y CUENTAS CORRIENTES", 15, 52);
 
       // Filter settings info
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
+      doc.setFontSize(8.5);
       doc.setTextColor(100, 116, 139); // Slate-500
       doc.text(
-        `Filtro actual: ${activeTab === "todos" ? "Todos los clientes" : activeTab === "deudores" ? "Clientes con deuda activa" : "Clientes sin deuda / al día"}` +
+        `Filtro aplicado: ${activeTab === "todos" ? "Todos los clientes" : activeTab === "deudores" ? "Solo clientes deudores" : "Clientes al día"}` +
         (search ? ` - Búsqueda: "${search}"` : ""),
         15,
-        60
+        58
       );
 
-      // Stats block
+      // Stats Summary Block
       const totalDebtors = customers.filter(c => c.debt > 0).length;
       const totalDebtAmount = customers.reduce((acc, c) => acc + c.debt, 0);
       const totalBoughtAmount = customers.reduce((acc, c) => acc + c.totalBought, 0);
 
       doc.setFillColor(248, 250, 252); // Slate-50
       doc.setDrawColor(226, 232, 240); // Slate-200
-      doc.roundedRect(15, 66, 180, 22, 3, 3, "FD");
+      doc.roundedRect(15, 63, 180, 22, 3, 3, "FD");
 
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
+      doc.setFontSize(8.5);
       doc.setTextColor(71, 85, 105);
 
-      doc.text("Clientes con Deuda:", 20, 74);
+      doc.text("Clientes con Deuda:", 20, 71);
       doc.setFont("helvetica", "normal");
-      doc.text(`${totalDebtors} de ${customers.length}`, 55, 74);
+      doc.text(`${totalDebtors} de ${customers.length}`, 53, 71);
 
       doc.setFont("helvetica", "bold");
-      doc.text("Deuda Global Acumulada:", 20, 81);
-      doc.setFont("helvetica", "normal");
+      doc.text("Deuda Global Acumulada:", 20, 78);
+      doc.setFont("helvetica", "bold");
       doc.setTextColor(220, 38, 38); // Red-600
-      doc.text(`$${totalDebtAmount.toLocaleString("es-AR")}`, 64, 81);
+      doc.text(`$${totalDebtAmount.toLocaleString("es-AR")}`, 62, 78);
 
       doc.setTextColor(71, 85, 105);
       doc.setFont("helvetica", "bold");
-      doc.text("Compras Totales Históricas:", 100, 74);
-      doc.setFont("helvetica", "normal");
-      doc.text(`$${totalBoughtAmount.toLocaleString("es-AR")}`, 147, 74);
+      doc.text("Compras Totales Históricas:", 105, 71);
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text(`$${totalBoughtAmount.toLocaleString("es-AR")}`, 152, 71);
 
-      // Table Setup
-      const tableHeaders = [["Cliente", "Teléfono / Email", "Fecha Registro", "Total Compras", "Saldo Adeudado"]];
+      // Table Setup - 6 Columns properly proportioned to 180mm printable width
+      const tableHeaders = [["Cliente", "DNI", "Teléfono / Email", "Fecha Reg.", "Total Compras", "Saldo Adeudado"]];
       const tableRows = filteredCustomers.map(c => {
         const phoneAndEmail = `${c.phone !== "-" ? c.phone : "S/T"}\n${c.email || "S/E"}`;
         const registeredDate = c.registeredAt ? new Date(c.registeredAt).toLocaleDateString("es-AR") : "S/F";
         return [
           c.name,
+          c.dni || "-",
           phoneAndEmail,
           registeredDate,
           `$${c.totalBought.toLocaleString("es-AR")}`,
@@ -147,11 +151,11 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
       autoTable(doc, {
         head: tableHeaders,
         body: tableRows,
-        startY: 96,
+        startY: 91,
         margin: { left: 15, right: 15 },
         theme: "striped",
         headStyles: {
-          fillColor: [79, 70, 229], // Indigo-600
+          fillColor: [30, 41, 59], // Slate-800 professional header
           textColor: [255, 255, 255],
           fontSize: 8,
           fontStyle: "bold"
@@ -161,11 +165,24 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
           valign: "middle"
         },
         columnStyles: {
-          0: { cellWidth: 45, fontStyle: "bold" },
-          1: { cellWidth: 50 },
-          2: { cellWidth: 28 },
-          3: { cellWidth: 28, halign: "right" },
-          4: { cellWidth: 29, halign: "right", fontStyle: "bold" }
+          0: { cellWidth: 42, fontStyle: "bold" },
+          1: { cellWidth: 24 },
+          2: { cellWidth: 38 },
+          3: { cellWidth: 24, halign: "center" },
+          4: { cellWidth: 26, halign: "right" },
+          5: { cellWidth: 26, halign: "right", fontStyle: "bold" }
+        },
+        didParseCell: (data) => {
+          if (data.section === "body" && data.column.index === 5) {
+            const val = String(data.cell.raw || "");
+            if (val !== "$0" && !val.startsWith("$0,")) {
+              data.cell.styles.textColor = [220, 38, 38]; // Highlight active debts in RED
+              data.cell.styles.fontStyle = "bold";
+            } else {
+              data.cell.styles.textColor = [22, 163, 74]; // Green for $0 (Al día)
+              data.cell.styles.fontStyle = "normal";
+            }
+          }
         },
         didDrawPage: (data) => {
           const pageCount = doc.getNumberOfPages();
@@ -196,72 +213,72 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
       });
 
       // Top Header Banner
-      doc.setFillColor(79, 70, 229); // Brand color: Indigo-600
+      doc.setFillColor(15, 23, 42); // Slate-900
       doc.rect(0, 0, 210, 42, "F");
 
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(22);
+      doc.setFontSize(20);
       doc.text("J&Z Indumentaria", 15, 18);
 
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(10);
-      doc.setTextColor(199, 210, 254);
+      doc.setFontSize(9.5);
+      doc.setTextColor(203, 213, 225);
       doc.text("Resumen de Cuenta Corriente y Deuda Activa", 15, 25);
       
       doc.setTextColor(255, 255, 255);
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      doc.text(`Fecha Emisión: ${new Date().toLocaleString("es-AR")}`, 140, 18);
-      doc.text("Reporte: Estado de Cuenta Cliente", 140, 24);
+      doc.setFontSize(8.5);
+      doc.text(`Fecha Emisión: ${new Date().toLocaleString("es-AR")}`, 135, 18);
+      doc.text("Reporte: Estado de Cuenta Cliente", 135, 24);
 
       // Report Header Section
-      doc.setTextColor(30, 41, 59); // Slate-800
+      doc.setTextColor(15, 23, 42);
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(14);
-      doc.text("ESTADO DE CUENTA INDIVIDUAL", 15, 54);
+      doc.setFontSize(13);
+      doc.text("ESTADO DE CUENTA INDIVIDUAL", 15, 52);
 
       // Customer Personal Info Block
-      doc.setFillColor(248, 250, 252); // Slate-50
-      doc.setDrawColor(226, 232, 240); // Slate-200
-      doc.roundedRect(15, 60, 180, 26, 3, 3, "FD");
+      doc.setFillColor(248, 250, 252);
+      doc.setDrawColor(226, 232, 240);
+      doc.roundedRect(15, 58, 180, 26, 3, 3, "FD");
 
       doc.setFont("helvetica", "bold");
-      doc.setFontSize(9);
+      doc.setFontSize(8.5);
       doc.setTextColor(71, 85, 105);
 
-      doc.text("Cliente:", 20, 67);
+      doc.text("Cliente:", 20, 65);
       doc.setFont("helvetica", "normal");
-      doc.text(customer.name, 35, 67);
+      doc.text(`${customer.name}${customer.dni ? ` (DNI: ${customer.dni})` : ''}`, 35, 65);
 
       doc.setFont("helvetica", "bold");
-      doc.text("Teléfono:", 20, 74);
+      doc.text("Teléfono:", 20, 72);
       doc.setFont("helvetica", "normal");
-      doc.text(customer.phone !== "-" ? customer.phone : "No especificado", 37, 74);
+      doc.text(customer.phone !== "-" ? customer.phone : "No especificado", 37, 72);
 
       doc.setFont("helvetica", "bold");
-      doc.text("Email:", 20, 81);
+      doc.text("Email:", 20, 79);
       doc.setFont("helvetica", "normal");
-      doc.text(customer.email || "No especificado", 32, 81);
+      doc.text(customer.email || "No especificado", 32, 79);
 
       // Total balance boxes in the block
       doc.setFont("helvetica", "bold");
-      doc.text("Historial de Compras:", 110, 67);
+      doc.text("Historial de Compras:", 110, 65);
       doc.setFont("helvetica", "normal");
-      doc.text(`$${customer.totalBought.toLocaleString("es-AR")}`, 148, 67);
+      doc.text(`$${customer.totalBought.toLocaleString("es-AR")}`, 148, 65);
 
       doc.setFont("helvetica", "bold");
-      doc.text("SALDO DEUDOR ACTUAL:", 110, 76);
+      doc.text("SALDO DEUDOR ACTUAL:", 110, 74);
       doc.setFont("helvetica", "bold");
       doc.setTextColor(220, 38, 38); // Red-600
       doc.setFontSize(11);
-      doc.text(`$${customer.debt.toLocaleString("es-AR")}`, 155, 76);
+      doc.text(`$${customer.debt.toLocaleString("es-AR")}`, 155, 74);
 
       // Reset text style
-      doc.setTextColor(30, 41, 59);
-      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.setFontSize(8.5);
 
-      // Table Setup
+      // Table Setup - 5 columns totaling 180mm width
       const tableHeaders = [["Fecha Compra", "Artículo Comprado", "Cantidad", "Precio Unitario", "Saldo Pendiente"]];
       const tableRows = customer.debts.map(debt => {
         const formattedDate = new Date(debt.date).toLocaleDateString("es-AR");
@@ -277,11 +294,11 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
       autoTable(doc, {
         head: tableHeaders,
         body: tableRows,
-        startY: 92,
+        startY: 90,
         margin: { left: 15, right: 15 },
         theme: "striped",
         headStyles: {
-          fillColor: [220, 38, 38], // Red-600 for debts!
+          fillColor: [185, 28, 28], // Red-700 for debt statement
           textColor: [255, 255, 255],
           fontSize: 8,
           fontStyle: "bold"
@@ -291,11 +308,11 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
           valign: "middle"
         },
         columnStyles: {
-          0: { cellWidth: 30 },
+          0: { cellWidth: 30, halign: "center" },
           1: { cellWidth: 70, fontStyle: "bold" },
           2: { cellWidth: 20, halign: "center" },
           3: { cellWidth: 30, halign: "right" },
-          4: { cellWidth: 30, halign: "right", fontStyle: "bold" }
+          4: { cellWidth: 30, halign: "right", fontStyle: "bold", textColor: [185, 28, 28] }
         },
         didDrawPage: (data) => {
           const pageCount = doc.getNumberOfPages();
@@ -337,6 +354,7 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
   const filteredCustomers = customers.filter((c) => {
     // Avoid displaying final consumer in the standard customer database to keep it clean (or display with special tag)
     const matchesSearch = c.name.toLowerCase().includes(search.toLowerCase()) || 
+                          (c.dni && c.dni.includes(search)) ||
                           (c.email && c.email.toLowerCase().includes(search.toLowerCase())) ||
                           (c.phone && c.phone.includes(search));
                           
@@ -358,9 +376,10 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
     setCustError("");
 
     try {
-      await onAddCustomer({ name, email, phone });
+      await onAddCustomer({ name, dni, email, phone });
       setIsNewCustOpen(false);
       setName("");
+      setDni("");
       setEmail("");
       setPhone("");
     } catch (err: any) {
@@ -460,12 +479,12 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Email</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">DNI / CUIT</label>
               <input
-                type="email"
-                placeholder="Ej. juan@correo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                placeholder="Ej. 38123456"
+                value={dni}
+                onChange={(e) => setDni(e.target.value)}
                 className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none"
               />
             </div>
@@ -476,6 +495,16 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
                 placeholder="Ej. 11-2345-6789"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
+                className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-1.5">Email</label>
+              <input
+                type="email"
+                placeholder="Ej. juan@correo.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 focus:outline-none"
               />
             </div>
@@ -551,7 +580,7 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 h-4.5 w-4.5" />
           <input
             type="text"
-            placeholder="Buscar por nombre, email o celular..."
+            placeholder="Buscar por nombre, DNI, email o celular..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-10 pr-4 py-2.5 w-full bg-slate-50/50 hover:bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors"
@@ -596,6 +625,12 @@ export default function Customers({ customers, onAddCustomer, onPayDebt, onDelet
                           )}
                         </div>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1 text-xs text-slate-400">
+                          {cust.dni && (
+                            <span className="flex items-center space-x-1 font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md text-[11px]">
+                              <IdCard className="h-3 w-3 text-slate-400" />
+                              <span>DNI: {cust.dni}</span>
+                            </span>
+                          )}
                           {cust.email && (
                             <span className="flex items-center space-x-1">
                               <Mail className="h-3 w-3 text-slate-300" />

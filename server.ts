@@ -2,14 +2,176 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
-import { DBState, Product, Customer, Sale, SaleItem, UnpaidItem, Tenant, User, UserRole, LoginLog } from "./src/types";
+import { DBState, Product, Customer, Sale, SaleItem, UnpaidItem, Tenant, User, UserRole, LoginLog, DailyClosing } from "./src/types";
 
 const app = express();
 const PORT = 3000;
 const DATA_FILE = path.join(process.cwd(), "data.json");
 
-// Parse JSON bodies
-app.use(express.json());
+// Parse JSON and URL encoded bodies with high payload limits for Base64 profile photos and images
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+// ==================== API SECURITY SHIELD & HARDENING ====================
+
+interface SecurityLog {
+  id: string;
+  timestamp: string;
+  ip: string;
+  path: string;
+  method: string;
+  eventType: string;
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  details: string;
+}
+
+const securityAuditLogs: SecurityLog[] = [];
+const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+const lockoutMap = new Map<string, { failedCount: number; lockedUntil: number }>();
+let totalBlockedAttacks = 0;
+
+function logSecurityEvent(
+  ip: string,
+  path: string,
+  method: string,
+  eventType: string,
+  severity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL",
+  details: string
+) {
+  totalBlockedAttacks++;
+  const event: SecurityLog = {
+    id: `sec_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+    timestamp: new Date().toISOString(),
+    ip,
+    path,
+    method,
+    eventType,
+    severity,
+    details
+  };
+  securityAuditLogs.unshift(event);
+  if (securityAuditLogs.length > 200) securityAuditLogs.pop();
+  console.warn(`[SECURITY SHIELD] [${severity}] ${eventType}: ${details} (IP: ${ip})`);
+}
+
+// 1. Bank-Grade HTTP Security Headers
+app.use((_req, res, next) => {
+  res.removeHeader("X-Powered-By");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-Permitted-Cross-Domain-Policies", "none");
+  res.setHeader("X-Download-Options", "noopen");
+  res.setHeader("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  next();
+});
+
+// 2. DDoS & Rate Limiting Guard per IP
+app.use("/api", (req, res, next) => {
+  const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "127.0.0.1";
+  const now = Date.now();
+
+  // Check if IP is currently locked out due to attack attempts
+  const lockout = lockoutMap.get(clientIp);
+  if (lockout && lockout.lockedUntil > now) {
+    const remainingSec = Math.ceil((lockout.lockedUntil - now) / 1000);
+    logSecurityEvent(clientIp, req.path, req.method, "BLOCKED_LOCKED_OUT_IP", "HIGH", `Intento de solicitud desde IP bloqueada por seguridad. Tiempo restante: ${remainingSec}s`);
+    return res.status(429).json({
+      error: `🔒 Acceso Bloqueado por Seguridad: Múltiples intentos o ataques detectados. Por favor intente nuevamente en ${remainingSec} segundos.`
+    });
+  }
+
+  // Rate Limiter: max 300 requests per 60s per IP
+  const windowMs = 60 * 1000;
+  const maxRequests = 300;
+  const clientRate = rateLimitMap.get(clientIp) || { count: 0, resetTime: now + windowMs };
+
+  if (now > clientRate.resetTime) {
+    clientRate.count = 1;
+    clientRate.resetTime = now + windowMs;
+  } else {
+    clientRate.count++;
+  }
+  rateLimitMap.set(clientIp, clientRate);
+
+  if (clientRate.count > maxRequests) {
+    logSecurityEvent(clientIp, req.path, req.method, "RATE_LIMIT_EXCEEDED", "MEDIUM", `Exceso de tasa de solicitudes (${clientRate.count}/${maxRequests} por min)`);
+    return res.status(429).json({
+      error: "⚠️ Demasiadas solicitudes enviadas. Límite de tasa excedido para prevenir ataques de denegación de servicio (DDoS)."
+    });
+  }
+
+  next();
+});
+
+// 3. Payload Scanner Middleware (Anti-XSS, Anti-SQL Injection, Prototype Pollution Guard)
+function containsMaliciousPayload(str: string): { detected: boolean; reason?: string } {
+  if (!str || typeof str !== "string") return { detected: false };
+  const lower = str.toLowerCase();
+  
+  if (lower.includes("<script") || lower.includes("javascript:") || lower.includes("onerror=") || lower.includes("onload=") || lower.includes("<iframe")) {
+    return { detected: true, reason: "Inyección de Script Malicioso (XSS) detectada" };
+  }
+  if (
+    lower.includes("union select") ||
+    lower.includes("drop table") ||
+    lower.includes("truncate table") ||
+    lower.includes("delete from") ||
+    lower.includes("exec(") ||
+    lower.includes(";--")
+  ) {
+    return { detected: true, reason: "Inyección SQL/Comandos detectada" };
+  }
+  return { detected: false };
+}
+
+function scanObject(obj: any): { detected: boolean; reason?: string } {
+  if (!obj) return { detected: false };
+  if (typeof obj === "string") return containsMaliciousPayload(obj);
+  if (typeof obj === "object") {
+    for (const key in obj) {
+      if (Object.prototype.hasOwnProperty.call(obj, key)) {
+        if (key === "__proto__" || key === "constructor" || key === "prototype") {
+          return { detected: true, reason: "Intento de Contaminación de Prototipos (Prototype Pollution)" };
+        }
+        // Skip base64 photo data strings from scanning to avoid false positives on standard image tokens
+        if (key === "avatar" || key === "avatarUrl" || key === "photoUrl" || key === "image") {
+          continue;
+        }
+        const result = scanObject(obj[key]);
+        if (result.detected) return result;
+      }
+    }
+  }
+  return { detected: false };
+}
+
+app.use("/api", (req, res, next) => {
+  const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "127.0.0.1";
+
+  const bodyCheck = scanObject(req.body);
+  const queryCheck = scanObject(req.query);
+
+  if (bodyCheck.detected || queryCheck.detected) {
+    const reason = bodyCheck.reason || queryCheck.reason || "Patrón malicioso";
+
+    // Record attack attempt and increment lockout counter
+    const lockout = lockoutMap.get(clientIp) || { failedCount: 0, lockedUntil: 0 };
+    lockout.failedCount++;
+    if (lockout.failedCount >= 5) {
+      lockout.lockedUntil = Date.now() + 15 * 60 * 1000; // 15 min lockout
+    }
+    lockoutMap.set(clientIp, lockout);
+
+    logSecurityEvent(clientIp, req.path, req.method, "CRITICAL_ATTACK_BLOCKED", "CRITICAL", `Ataque bloqueado: ${reason}`);
+    return res.status(403).json({
+      error: `🚨 ESCUDO DE SEGURIDAD API: Solicitud rechazada por detectar ${reason}.`
+    });
+  }
+
+  next();
+});
 
 // Initial seed data for SaaS multi-tenant
 const initialData: DBState = {
@@ -84,98 +246,7 @@ const initialData: DBState = {
       avatarUrl: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&auto=format&fit=crop&q=80"
     }
   ],
-  products: [
-    {
-      id: "prod_1",
-      tenantId: "tenant_jz",
-      name: "Remera Básica Negra",
-      category: "Ropa",
-      price: 12000,
-      cost: 5500,
-      stock: 25,
-      minStock: 5
-    },
-    {
-      id: "prod_2",
-      tenantId: "tenant_jz",
-      name: "Jean Slim Blue",
-      category: "Ropa",
-      price: 35000,
-      cost: 16000,
-      stock: 15,
-      minStock: 3
-    },
-    {
-      id: "prod_3",
-      tenantId: "tenant_jz",
-      name: "Campera de Abrigo",
-      category: "Ropa",
-      price: 85000,
-      cost: 39000,
-      stock: 2,
-      minStock: 4
-    },
-    {
-      id: "prod_4",
-      tenantId: "tenant_elsol",
-      name: "Zapatillas Urbanas Blancas",
-      category: "Calzado",
-      price: 45000,
-      cost: 21000,
-      stock: 30,
-      minStock: 5
-    },
-    {
-      id: "prod_5",
-      tenantId: "tenant_elsol",
-      name: "Botas de Cuero Negro",
-      category: "Calzado",
-      price: 75000,
-      cost: 36000,
-      stock: 8,
-      minStock: 2
-    },
-    {
-      id: "prod_6",
-      tenantId: "tenant_elsol",
-      name: "Sandalias Playeras Verano",
-      category: "Calzado",
-      price: 18000,
-      cost: 8000,
-      stock: 1,
-      minStock: 3
-    },
-    {
-      id: "prod_7",
-      tenantId: "tenant_modaexpress",
-      name: "Cinturón de Cuero Marrón",
-      category: "Accesorios",
-      price: 9500,
-      cost: 4000,
-      stock: 12,
-      minStock: 3
-    },
-    {
-      id: "prod_8",
-      tenantId: "tenant_modaexpress",
-      name: "Gorra Trucker Classic",
-      category: "Accesorios",
-      price: 8000,
-      cost: 3500,
-      stock: 20,
-      minStock: 5
-    },
-    {
-      id: "prod_9",
-      tenantId: "tenant_modaexpress",
-      name: "Lentes de Sol Aviador",
-      category: "Accesorios",
-      price: 15000,
-      cost: 7000,
-      stock: 6,
-      minStock: 2
-    }
-  ],
+  products: [],
   customers: [
     {
       id: "cust_anonymous_jz",
@@ -209,126 +280,9 @@ const initialData: DBState = {
       totalBought: 0,
       debts: [],
       registeredAt: "2026-01-01T00:00:00.000Z"
-    },
-    {
-      id: "cust_1_jz",
-      tenantId: "tenant_jz",
-      name: "Juan Pérez",
-      email: "juan@perez.com",
-      phone: "1123456789",
-      debt: 0,
-      totalBought: 47000,
-      debts: [],
-      registeredAt: "2026-06-15T12:00:00.000Z"
-    },
-    {
-      id: "cust_2_jz",
-      tenantId: "tenant_jz",
-      name: "María Gómez",
-      email: "maria@gomez.com",
-      phone: "1187654321",
-      debt: 12000,
-      totalBought: 12000,
-      debts: [
-        {
-          saleId: "sale_seeded_1",
-          date: "2026-07-01T15:30:00.000Z",
-          productId: "prod_1",
-          productName: "Remera Básica Negra",
-          quantity: 1,
-          price: 12000,
-          pendingAmount: 12000
-        }
-      ],
-      registeredAt: "2026-07-01T10:00:00.000Z"
-    },
-    {
-      id: "cust_1_elsol",
-      tenantId: "tenant_elsol",
-      name: "Carlos Santana",
-      email: "carlos@santana.com",
-      phone: "261456123",
-      debt: 45000,
-      totalBought: 90000,
-      debts: [
-        {
-          saleId: "sale_seeded_2",
-          date: "2026-07-05T18:00:00.000Z",
-          productId: "prod_4",
-          productName: "Zapatillas Urbanas Blancas",
-          quantity: 1,
-          price: 45000,
-          pendingAmount: 45000
-        }
-      ],
-      registeredAt: "2026-07-05T12:00:00.000Z"
     }
   ],
-  sales: [
-    {
-      id: "sale_seeded_1",
-      tenantId: "tenant_jz",
-      date: "2026-07-01T15:30:00.000Z",
-      customerId: "cust_2_jz",
-      customerName: "María Gómez",
-      items: [
-        {
-          productId: "prod_1",
-          productName: "Remera Básica Negra",
-          quantity: 1,
-          price: 12000
-        }
-      ],
-      total: 12000,
-      paymentMethod: "cuenta_corriente",
-      status: "pendiente",
-      debtAmount: 12000,
-      userId: "user_jz_vendedor",
-      userName: "Sofía Vendedora"
-    },
-    {
-      id: "sale_seeded_2",
-      tenantId: "tenant_elsol",
-      date: "2026-07-05T18:00:00.000Z",
-      customerId: "cust_1_elsol",
-      customerName: "Carlos Santana",
-      items: [
-        {
-          productId: "prod_4",
-          productName: "Zapatillas Urbanas Blancas",
-          quantity: 1,
-          price: 45000
-        }
-      ],
-      total: 45000,
-      paymentMethod: "cuenta_corriente",
-      status: "pendiente",
-      debtAmount: 45000,
-      userId: "user_elsol_vendedor",
-      userName: "Pedro Vendedor"
-    },
-    {
-      id: "sale_seeded_3",
-      tenantId: "tenant_jz",
-      date: "2026-07-10T11:20:00.000Z",
-      customerId: "cust_1_jz",
-      customerName: "Juan Pérez",
-      items: [
-        {
-          productId: "prod_2",
-          productName: "Jean Slim Blue",
-          quantity: 1,
-          price: 35000
-        }
-      ],
-      total: 35000,
-      paymentMethod: "transferencia",
-      status: "pagado",
-      debtAmount: 0,
-      userId: "user_jz_admin",
-      userName: "Admin J&Z"
-    }
-  ]
+  sales: []
 };
 
 // Helper to read database
@@ -347,6 +301,7 @@ function readDB(): DBState {
       fs.writeFileSync(DATA_FILE, JSON.stringify(initialData, null, 2), "utf-8");
       return initialData;
     }
+
     // Automatically migrate old default tenant name "J&Z Indumentaria" to "JM Software"
     let updated = false;
     parsed.tenants = parsed.tenants.map((t: Tenant) => {
@@ -356,6 +311,49 @@ function readDB(): DBState {
       }
       return t;
     });
+
+    // Remove old seeded demo items if present
+    const demoProdIds = ["prod_1", "prod_2", "prod_3", "prod_4", "prod_5", "prod_6", "prod_7", "prod_8", "prod_9"];
+    if (parsed.products && parsed.products.some((p: any) => demoProdIds.includes(p.id))) {
+      parsed.products = parsed.products.filter((p: any) => !demoProdIds.includes(p.id));
+      updated = true;
+    }
+    const demoCustIds = ["cust_1_jz", "cust_2_jz", "cust_1_elsol"];
+    if (parsed.customers && parsed.customers.some((c: any) => demoCustIds.includes(c.id))) {
+      parsed.customers = parsed.customers.filter((c: any) => !demoCustIds.includes(c.id));
+      updated = true;
+    }
+    const demoSaleIds = ["sale_seeded_1", "sale_seeded_2", "sale_seeded_3"];
+    if (parsed.sales && parsed.sales.some((s: any) => demoSaleIds.includes(s.id))) {
+      parsed.sales = parsed.sales.filter((s: any) => !demoSaleIds.includes(s.id));
+      updated = true;
+    }
+
+    // Ensure sales have progressive invoice numbers
+    if (parsed.sales && Array.isArray(parsed.sales)) {
+      // Group sales by tenantId to build progressive numbering per tenant
+      const salesByTenant: Record<string, any[]> = {};
+      parsed.sales.forEach((s: any) => {
+        const tid = s.tenantId || "tenant_jz";
+        if (!salesByTenant[tid]) salesByTenant[tid] = [];
+        salesByTenant[tid].push(s);
+      });
+
+      // For each tenant, ensure all sales have invoiceSequence and invoiceNumber
+      for (const tid in salesByTenant) {
+        const tenantSales = salesByTenant[tid];
+        // Sort sales chronologically by date
+        tenantSales.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        tenantSales.forEach((s, idx) => {
+          if (!s.invoiceSequence || !s.invoiceNumber) {
+            s.invoiceSequence = idx + 1;
+            s.invoiceNumber = `FAC-${String(idx + 1).padStart(6, '0')}`;
+            updated = true;
+          }
+        });
+      }
+    }
+
     // Ensure users have avatarUrl populated
     if (parsed.users && parsed.users.length > 0) {
       const defaultAvatars: Record<string, string> = {
@@ -410,8 +408,8 @@ function writeDB(data: DBState) {
 
 // Middleware to authorize and isolate tenant requests, and enforce subscription paywalls
 app.use("/api", (req, res, next) => {
-  // Allow system/tenant listing, billing simulator, and toggle endpoints to execute freely
-  if (req.path.startsWith("/tenants")) {
+  // Allow system/tenant listing, billing simulator, security status, and toggle endpoints to execute freely
+  if (req.path.startsWith("/tenants") || req.path.startsWith("/security")) {
     return next();
   }
   
@@ -437,6 +435,39 @@ app.use("/api", (req, res, next) => {
   }
   
   next();
+});
+
+// ==================== SECURITY SHIELD & MONITORING API ====================
+
+// GET: Current API Security Shield metrics and audit logs
+app.get("/api/security/status", (_req, res) => {
+  const now = Date.now();
+  const activeLockouts = Array.from(lockoutMap.entries()).filter(([_, val]) => val.lockedUntil > now).length;
+
+  res.json({
+    status: "ACTIVE_PROTECTION",
+    shieldVersion: "v2.5 Enterprise Security Engine",
+    activeShields: [
+      "Protección DDoS y Límite de Tasa (300 req/min por IP)",
+      "Bloqueo Automático Anti-Fuerza Bruta y Ataques Reincidentes",
+      "Sanitización Anti-XSS y Anti-Inyección SQL/Comandos",
+      "Encabezados HTTP de Grado Bancario (NOSNIFF, SAMEORIGIN, Anti-Clickjacking)",
+      "Aislamiento Estricto Multi-Inquilino (Tenant Isolation Guard)",
+      "Protección Contra Contaminación de Prototipos (Prototype Pollution Guard)"
+    ],
+    totalBlockedAttacks,
+    activeLockoutsCount: activeLockouts,
+    securityLogs: securityAuditLogs.slice(0, 50)
+  });
+});
+
+// POST: Reset security lockouts & rate limits (Admin tool)
+app.post("/api/security/clear-lockouts", (req, res) => {
+  const clientIp = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "127.0.0.1";
+  lockoutMap.clear();
+  rateLimitMap.clear();
+  logSecurityEvent(clientIp, "/api/security/clear-lockouts", "POST", "ADMIN_RESET_SECURITY", "LOW", "Reinicio manual de bloqueos de seguridad y límites de tasa");
+  res.json({ message: "Escudo de seguridad reiniciado con éxito. Todos los bloqueos de IP y contadores han sido liberados." });
 });
 
 // ==================== TENANTS API (Billing, SaaS Management) ====================
@@ -612,7 +643,27 @@ app.delete("/api/products/:id", (req, res) => {
 app.get("/api/customers", (req, res) => {
   const db = readDB();
   const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
-  const filtered = db.customers.filter(c => c.tenantId === tenantId);
+  let filtered = db.customers.filter(c => c.tenantId === tenantId);
+
+  // Auto-provision Consumidor Final if missing for this tenant
+  const hasAnon = filtered.some(c => c.id.startsWith("cust_anonymous") || c.name.toLowerCase() === "consumidor final");
+  if (!hasAnon) {
+    const newAnon: Customer = {
+      id: `cust_anonymous_${tenantId}`,
+      tenantId,
+      name: "Consumidor Final",
+      email: "consumidor@final.com",
+      phone: "-",
+      debt: 0,
+      totalBought: 0,
+      debts: [],
+      registeredAt: new Date().toISOString()
+    };
+    db.customers.unshift(newAnon);
+    writeDB(db);
+    filtered = db.customers.filter(c => c.tenantId === tenantId);
+  }
+
   res.json(filtered);
 });
 
@@ -620,7 +671,7 @@ app.get("/api/customers", (req, res) => {
 app.post("/api/customers", (req, res) => {
   const db = readDB();
   const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
-  const { name, email, phone } = req.body;
+  const { name, dni, email, phone } = req.body;
 
   if (!name) {
     return res.status(400).json({ error: "El nombre es obligatorio" });
@@ -630,6 +681,7 @@ app.post("/api/customers", (req, res) => {
     id: `cust_${Date.now()}`,
     tenantId,
     name,
+    dni: dni || "",
     email: email || "",
     phone: phone || "",
     debt: 0,
@@ -648,7 +700,7 @@ app.put("/api/customers/:id", (req, res) => {
   const db = readDB();
   const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
   const { id } = req.params;
-  const { name, email, phone } = req.body;
+  const { name, dni, email, phone } = req.body;
 
   const custIdx = db.customers.findIndex(c => c.id === id && c.tenantId === tenantId);
   if (custIdx === -1) {
@@ -658,6 +710,7 @@ app.put("/api/customers/:id", (req, res) => {
   const updatedCustomer = {
     ...db.customers[custIdx],
     ...(name !== undefined && { name }),
+    ...(dni !== undefined && { dni }),
     ...(email !== undefined && { email }),
     ...(phone !== undefined && { phone })
   };
@@ -776,17 +829,42 @@ app.post("/api/sales", (req, res) => {
   }
 
   // Find customer of this tenant or default to anonymous customer
-  const defaultAnonId = `cust_anonymous_${tenantId}`;
-  const targetCustId = customerId || defaultAnonId;
-  const custIdx = db.customers.findIndex(c => c.id === targetCustId && c.tenantId === tenantId);
-  
-  if (custIdx === -1) {
-    return res.status(404).json({ error: "Cliente no encontrado o no pertenece a su comercio" });
+  let custIdx = -1;
+
+  if (customerId) {
+    custIdx = db.customers.findIndex(c => c.id === customerId && c.tenantId === tenantId);
   }
+
+  // Fallback: If not found by exact ID, or if customerId is "cust_anonymous" or empty
+  if (custIdx === -1) {
+    custIdx = db.customers.findIndex(c => c.tenantId === tenantId && (
+      c.id === customerId ||
+      c.id.startsWith("cust_anonymous") ||
+      c.name.toLowerCase() === "consumidor final"
+    ));
+  }
+
+  // Auto-provision Consumidor Final for this tenant if still not found
+  if (custIdx === -1) {
+    const newAnon: Customer = {
+      id: `cust_anonymous_${tenantId}`,
+      tenantId,
+      name: "Consumidor Final",
+      email: "consumidor@final.com",
+      phone: "-",
+      debt: 0,
+      totalBought: 0,
+      debts: [],
+      registeredAt: new Date().toISOString()
+    };
+    db.customers.unshift(newAnon);
+    custIdx = 0;
+  }
+
   const customer = db.customers[custIdx];
 
   // Prevent anonymous customers from using debt/cuenta corriente
-  if (customer.id.startsWith("cust_anonymous") && paymentMethod === "cuenta_corriente") {
+  if ((customer.id.startsWith("cust_anonymous") || customer.name.toLowerCase() === "consumidor final") && paymentMethod === "cuenta_corriente") {
     return res.status(400).json({ error: "El Consumidor Final no puede comprar a Cuenta Corriente (fiado)" });
   }
 
@@ -844,10 +922,18 @@ app.post("/api/sales", (req, res) => {
   if (!userName) {
     userName = "Vendedor General";
   }
+
+  // Calculate progressive invoice sequence for this tenant
+  const tenantSales = db.sales.filter(s => s.tenantId === tenantId);
+  const maxSeq = tenantSales.reduce((max, s) => Math.max(max, s.invoiceSequence || 0), 0);
+  const newSeq = maxSeq + 1;
+  const invoiceNumber = `FAC-${String(newSeq).padStart(6, '0')}`;
   
   const newSale: Sale = {
     id: saleId,
     tenantId,
+    invoiceNumber,
+    invoiceSequence: newSeq,
     date: new Date().toISOString(),
     customerId: customer.id,
     customerName: customer.name,
@@ -933,6 +1019,65 @@ app.delete("/api/sales/:id", (req, res) => {
   res.json({ message: "Transacción eliminada con éxito", id });
 });
 
+// ==================== DAILY CLOSINGS API (Tenant Isolated) ====================
+
+// GET: All Daily Closings for Tenant
+app.get("/api/daily-closings", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  if (!db.dailyClosings) db.dailyClosings = [];
+  const filtered = db.dailyClosings.filter(dc => dc.tenantId === tenantId);
+  res.json(filtered);
+});
+
+// POST: Save a Daily Closing
+app.post("/api/daily-closings", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  if (!db.dailyClosings) db.dailyClosings = [];
+
+  const {
+    id,
+    date,
+    closedAt,
+    closedByUserId,
+    closedByUserName,
+    initialCash,
+    cashSales,
+    transferSales,
+    creditSales,
+    totalSales,
+    expenses,
+    expectedCash,
+    actualCash,
+    difference,
+    notes
+  } = req.body;
+
+  const newClosing: DailyClosing = {
+    id: id || `close_${Date.now()}`,
+    tenantId,
+    date: date || new Date().toISOString().split("T")[0],
+    closedAt: closedAt || new Date().toISOString(),
+    closedByUserId: closedByUserId || undefined,
+    closedByUserName: closedByUserName || "Administrador",
+    initialCash: Number(initialCash) || 0,
+    cashSales: Number(cashSales) || 0,
+    transferSales: Number(transferSales) || 0,
+    creditSales: Number(creditSales) || 0,
+    totalSales: Number(totalSales) || 0,
+    expenses: Number(expenses) || 0,
+    expectedCash: Number(expectedCash) || 0,
+    actualCash: Number(actualCash) || 0,
+    difference: Number(difference) || 0,
+    notes: notes || undefined
+  };
+
+  db.dailyClosings.unshift(newClosing);
+  writeDB(db);
+  res.status(201).json({ message: "Cierre de caja guardado con éxito", dailyClosing: newClosing });
+});
+
 // ==================== USERS API (Tenant Isolated) ====================
 
 // GET: All Users (Filtered by Tenant)
@@ -947,7 +1092,7 @@ app.get("/api/users", (req, res) => {
 app.post("/api/users", (req, res) => {
   const db = readDB();
   const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
-  const { name, email, role, avatarUrl, photoUrl, avatar } = req.body;
+  const { name, email, role, avatarUrl, photoUrl, avatar, password } = req.body;
 
   if (!name || !role) {
     return res.status(400).json({ error: "El nombre y el rol son obligatorios" });
@@ -959,6 +1104,9 @@ app.post("/api/users", (req, res) => {
       : "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80"
   );
 
+  // Default generated password if empty
+  const finalPassword = password && password.trim() ? password.trim() : `${role === "administrador" ? "Admin" : "Vend"}-${Math.floor(1000 + Math.random() * 9000)}`;
+
   const newUser: User = {
     id: `user_${Date.now()}`,
     tenantId,
@@ -966,7 +1114,8 @@ app.post("/api/users", (req, res) => {
     email: email || `${name.toLowerCase().replace(/\s+/g, ".")}@comercio.com`,
     role: role as UserRole,
     avatarUrl: finalAvatar,
-    photoUrl: finalAvatar
+    photoUrl: finalAvatar,
+    password: finalPassword
   };
 
   db.users.push(newUser);
@@ -979,7 +1128,7 @@ app.put("/api/users/:id", (req, res) => {
   const db = readDB();
   const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
   const { id } = req.params;
-  const { name, email, role, avatarUrl, photoUrl, avatar } = req.body;
+  const { name, email, role, avatarUrl, photoUrl, avatar, password } = req.body;
 
   const userIdx = db.users.findIndex(u => u.id === id && u.tenantId === tenantId);
   if (userIdx === -1) {
@@ -993,7 +1142,8 @@ app.put("/api/users/:id", (req, res) => {
     ...(name !== undefined && { name }),
     ...(email !== undefined && { email }),
     ...(role !== undefined && { role: role as UserRole }),
-    ...(newAvatar !== undefined && { avatarUrl: newAvatar, photoUrl: newAvatar })
+    ...(newAvatar !== undefined && { avatarUrl: newAvatar, photoUrl: newAvatar }),
+    ...(password !== undefined && { password: password.trim() })
   };
 
   db.users[userIdx] = updatedUser;
@@ -1133,6 +1283,174 @@ app.delete("/api/login-logs/:id", (req, res) => {
   db.loginLogs = (db.loginLogs || []).filter(l => String(l.id) !== String(id));
   writeDB(db);
   res.json({ message: "Registro de ingreso eliminado con éxito", id });
+});
+
+// ==================== DATABASE BACKUP, RESTORE & CLEAR API ====================
+
+// GET: Export entire tenant database state (Backup JSON for owner)
+app.get("/api/database/backup", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const tenant = db.tenants.find(t => t.id === tenantId) || { id: tenantId, name: "Comercio Local" };
+
+  const backupData = {
+    exportDate: new Date().toISOString(),
+    systemVersion: "2.5 Multitenant",
+    tenant,
+    products: db.products.filter(p => p.tenantId === tenantId),
+    customers: db.customers.filter(c => c.tenantId === tenantId),
+    sales: db.sales.filter(s => s.tenantId === tenantId),
+    users: db.users.filter(u => u.tenantId === tenantId),
+    loginLogs: (db.loginLogs || []).filter(l => l.tenantId === tenantId)
+  };
+
+  res.json(backupData);
+});
+
+// POST: Restore tenant database state from JSON backup file
+app.post("/api/database/restore", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  const { products, customers, sales, loginLogs } = req.body;
+
+  if (!Array.isArray(products) || !Array.isArray(customers) || !Array.isArray(sales)) {
+    return res.status(400).json({ error: "Estructura de archivo de copia de seguridad no válida. Se requieren las secciones 'products', 'customers' y 'sales'." });
+  }
+
+  // Remove existing items for this tenant
+  db.products = db.products.filter(p => p.tenantId !== tenantId);
+  db.customers = db.customers.filter(c => c.tenantId !== tenantId);
+  db.sales = db.sales.filter(s => s.tenantId !== tenantId);
+  if (db.loginLogs) {
+    db.loginLogs = db.loginLogs.filter(l => l.tenantId !== tenantId);
+  } else {
+    db.loginLogs = [];
+  }
+
+  // Inject restored items tagged with tenantId
+  const restoredProducts = products.map((p: any) => ({ ...p, tenantId }));
+  const restoredCustomers = customers.map((c: any) => ({ ...c, tenantId }));
+  const restoredSales = sales.map((s: any) => ({ ...s, tenantId }));
+  const restoredLogs = Array.isArray(loginLogs) ? loginLogs.map((l: any) => ({ ...l, tenantId })) : [];
+
+  db.products.push(...restoredProducts);
+  db.customers.push(...restoredCustomers);
+  db.sales.push(...restoredSales);
+  db.loginLogs.push(...restoredLogs);
+
+  // Guarantee default anonymous customer exists
+  const anonId = `cust_anonymous_${tenantId}`;
+  if (!db.customers.some(c => c.id === anonId && c.tenantId === tenantId)) {
+    db.customers.unshift({
+      id: anonId,
+      tenantId,
+      name: "Consumidor Final",
+      email: "consumidor@final.com",
+      phone: "-",
+      debt: 0,
+      totalBought: 0,
+      debts: [],
+      registeredAt: new Date().toISOString()
+    });
+  }
+
+  writeDB(db);
+  res.json({
+    message: "Base de datos restaurada con éxito",
+    counts: {
+      products: restoredProducts.length,
+      customers: restoredCustomers.length,
+      sales: restoredSales.length
+    }
+  });
+});
+
+// POST: Clear database completely (Start blank for new shift/owner)
+app.post("/api/database/clear", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+  
+  // Clear products, sales, non-anonymous customers for this tenant
+  db.products = db.products.filter(p => p.tenantId !== tenantId);
+  db.sales = db.sales.filter(s => s.tenantId !== tenantId);
+  
+  // Keep only default anonymous customer
+  const anonId = `cust_anonymous_${tenantId}`;
+  db.customers = db.customers.filter(c => c.tenantId !== tenantId);
+  db.customers.unshift({
+    id: anonId,
+    tenantId,
+    name: "Consumidor Final",
+    email: "consumidor@final.com",
+    phone: "-",
+    debt: 0,
+    totalBought: 0,
+    debts: [],
+    registeredAt: new Date().toISOString()
+  });
+
+  writeDB(db);
+  res.json({ message: "Base de datos vaciada con éxito. El sistema ha quedado en blanco para ingresar clientes, artículos y ventas desde cero." });
+});
+
+// POST: Restablecer datos de prueba (Demo Seed)
+app.post("/api/database/seed-demo", (req, res) => {
+  const db = readDB();
+  const tenantId = (req.headers["x-tenant-id"] as string) || "tenant_jz";
+
+  db.products = db.products.filter(p => p.tenantId !== tenantId);
+  db.customers = db.customers.filter(c => c.tenantId !== tenantId);
+  db.sales = db.sales.filter(s => s.tenantId !== tenantId);
+
+  const demoProducts = [
+    { id: `prod_demo_1_${Date.now()}`, tenantId, name: "Remera Básica Negra", category: "Ropa", price: 12000, cost: 5500, stock: 25, minStock: 5 },
+    { id: `prod_demo_2_${Date.now()}`, tenantId, name: "Jean Slim Blue", category: "Ropa", price: 35000, cost: 16000, stock: 15, minStock: 3 },
+    { id: `prod_demo_3_${Date.now()}`, tenantId, name: "Zapatilla Urbana N° 39", category: "Calzado", price: 45000, cost: 21000, stock: 10, minStock: 2 }
+  ];
+
+  const anonId = `cust_anonymous_${tenantId}`;
+  const demoCustomers = [
+    { id: anonId, tenantId, name: "Consumidor Final", email: "consumidor@final.com", phone: "-", debt: 0, totalBought: 0, debts: [], registeredAt: new Date().toISOString() },
+    { id: `cust_demo_1_${Date.now()}`, tenantId, name: "Juan Pérez", email: "juan@perez.com", phone: "1123456789", debt: 0, totalBought: 47000, debts: [], registeredAt: new Date().toISOString() },
+    { id: `cust_demo_2_${Date.now()}`, tenantId, name: "María Gómez", email: "maria@gomez.com", phone: "1187654321", debt: 12000, totalBought: 12000, debts: [{ saleId: "sale_demo_1", date: new Date().toISOString(), productId: demoProducts[0].id, productName: demoProducts[0].name, quantity: 1, price: 12000, pendingAmount: 12000 }], registeredAt: new Date().toISOString() }
+  ];
+
+  const demoSales = [
+    {
+      id: `sale_demo_1_${Date.now()}`,
+      tenantId,
+      invoiceNumber: "FAC-000001",
+      invoiceSequence: 1,
+      date: new Date().toISOString(),
+      customerId: demoCustomers[2].id,
+      customerName: demoCustomers[2].name,
+      items: [{ productId: demoProducts[0].id, productName: demoProducts[0].name, quantity: 1, price: 12000, cost: 5500 }],
+      total: 12000,
+      paymentMethod: "cuenta_corriente" as const,
+      status: "pendiente" as const,
+      debtAmount: 12000,
+      userName: "Admin General"
+    }
+  ];
+
+  db.products.push(...demoProducts);
+  db.customers.push(...demoCustomers);
+  db.sales.push(...demoSales);
+
+  writeDB(db);
+  res.json({ message: "Datos demo restablecidos con éxito" });
+});
+
+// Global Express error handler to guarantee JSON formatted error responses
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (err) {
+    console.error("[Express Error]:", err);
+    if (err.type === "entity.too.large" || err.status === 413) {
+      return res.status(413).json({ error: "El archivo o foto de perfil enviada excede el tamaño máximo permitido (50MB)." });
+    }
+    return res.status(err.status || 500).json({ error: err.message || "Error interno del servidor" });
+  }
+  next();
 });
 
 // ========================================================

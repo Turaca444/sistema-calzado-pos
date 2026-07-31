@@ -61,6 +61,15 @@ export default function Login({ tenants, users, onLogin, initialTenantId }: Logi
     }
 
     const matchedUser = users.find((u) => u.id === finalUserId);
+    
+    // Password validation if user has a password set
+    if (matchedUser && matchedUser.password && matchedUser.password.trim().length > 0) {
+      if (!password || password.trim() !== matchedUser.password.trim()) {
+        setError(`🔒 Contraseña incorrecta para el usuario ${matchedUser.name}. Por favor ingrese la clave asignada por el Administrador en la sección de Personal.`);
+        return;
+      }
+    }
+
     const userName = matchedUser?.name || (selectedRole === "administrador" ? "Administrador General" : "Vendedor de Caja");
     const userEmail = matchedUser?.email || (selectedRole === "administrador" ? "admin@comercio.com" : "vendedor@comercio.com");
 
@@ -295,18 +304,32 @@ export default function Login({ tenants, users, onLogin, initialTenantId }: Logi
               )}
             </div>
 
-            {/* DEMO / PASSWORD OPTIONAL */}
+            {/* PASSWORD INPUT */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
-                4. Clave de Acceso / PIN (Demo)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-400">
+                  4. Contraseña de Acceso API / Sistema
+                </label>
+                {users.find(u => u.id === selectedUserId)?.password && (
+                  <span className="text-[10px] font-bold text-amber-400 bg-amber-950/60 border border-amber-800/60 px-2 py-0.5 rounded-md">
+                    🔒 Clave requerida
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <Lock className="absolute left-3.5 top-3 h-4 w-4 text-slate-500 pointer-events-none" />
                 <input
                   type="password"
-                  placeholder="•••••••• (Ingreso rápido demo sin contraseña)"
+                  placeholder={
+                    users.find(u => u.id === selectedUserId)?.password 
+                      ? "Ingrese su contraseña asignada por el Administrador" 
+                      : "•••••••• (Sin clave requerida para este usuario)"
+                  }
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError("");
+                  }}
                   className="w-full bg-slate-900 border border-slate-800 text-white rounded-xl pl-10 pr-4 py-2.5 text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all font-mono"
                 />
               </div>

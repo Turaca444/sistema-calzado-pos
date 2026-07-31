@@ -70,10 +70,15 @@ export function exportFacturaB(sale: Sale, customer?: Customer) {
     doc.text("FACTURA", 115, 20);
 
     doc.setFontSize(9);
-    // Sale ID as clean Invoice number: padded with zeros
-    const numericId = sale.id.replace(/[^0-9]/g, "");
-    const formattedInvoiceNum = numericId ? numericId.slice(-8).padStart(8, "0") : "00000102";
-    doc.text(`Nro. Comprobante: 0001-${formattedInvoiceNum}`, 115, 26);
+    // Sale Progressive Invoice Number
+    let invoiceCode = sale.invoiceNumber;
+    if (!invoiceCode) {
+      const seqStr = sale.invoiceSequence ? String(sale.invoiceSequence).padStart(6, "0") : (sale.id.replace(/[^0-9]/g, "").slice(-6) || "000001");
+      invoiceCode = `FAC-${seqStr}`;
+    }
+    const seqDigits = invoiceCode.replace(/^FAC-/, "").padStart(8, "0");
+    const formattedInvoiceNum = `0001-${seqDigits}`;
+    doc.text(`Nro. Comprobante: ${formattedInvoiceNum}`, 115, 26);
     
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
@@ -227,7 +232,7 @@ export function exportFacturaB(sale: Sale, customer?: Customer) {
     doc.text("CAE Nº:", 135, footerStartY + 6);
     doc.setFont("helvetica", "normal");
     // Generate simulated CAE code
-    const generatedCAE = "76281900248" + numericId.slice(-3).padStart(3, "0") + "4";
+    const generatedCAE = "76281900248" + seqDigits.slice(-3).padStart(3, "0") + "4";
     doc.text(generatedCAE, 150, footerStartY + 6);
 
     doc.setFont("helvetica", "bold");
@@ -281,7 +286,7 @@ export function exportFacturaB(sale: Sale, customer?: Customer) {
     doc.text("¡Gracias por confiar en nosotros!", 135, footerStartY + 24);
 
     // Save File
-    doc.save(`Factura_B_${formattedInvoiceNum}_${sale.customerName.replace(/\s+/g, '_')}.pdf`);
+    doc.save(`Factura_B_${invoiceCode}_${sale.customerName.replace(/\s+/g, '_')}.pdf`);
   } catch (error) {
     console.error("Error generating Factura B PDF:", error);
   }

@@ -71,7 +71,7 @@ export default function History({ sales, customers = [], onDeleteSale }: History
       item.productName.toLowerCase().includes(searchLower)
     );
 
-    const matchesSearch = matchesCustomer || matchesProducts || s.id.toLowerCase().includes(searchLower);
+    const matchesSearch = matchesCustomer || matchesProducts || s.id.toLowerCase().includes(searchLower) || (s.invoiceNumber && s.invoiceNumber.toLowerCase().includes(searchLower));
 
     // Payment method filter
     const matchesPayment = paymentMethodFilter === "Todos" || s.paymentMethod === paymentMethodFilter;
@@ -234,7 +234,7 @@ export default function History({ sales, customers = [], onDeleteSale }: History
         else if (sale.status === "parcialmente_pagado") statusStr = "Pago Parcial";
         
         return [
-          `#${sale.id}`,
+          sale.invoiceNumber || `#${sale.id}`,
           formattedDate,
           sale.userName ? `${sale.customerName}\n(Vend: ${sale.userName})` : sale.customerName,
           itemsStr,
@@ -426,7 +426,9 @@ export default function History({ sales, customers = [], onDeleteSale }: History
                   <tr key={sale.id} className="hover:bg-slate-50/30 transition-colors">
                     <td className="py-4 px-6">
                       <div className="flex flex-col">
-                        <span className="font-semibold text-slate-900 font-mono">#{sale.id}</span>
+                        <span className="font-extrabold text-indigo-700 font-mono text-xs bg-indigo-50 border border-indigo-100/80 px-2 py-0.5 rounded-md w-fit">
+                          {sale.invoiceNumber || `#${sale.id}`}
+                        </span>
                         <span className="text-[10px] text-slate-400 mt-1 flex items-center space-x-1">
                           <Calendar className="h-3 w-3 text-slate-300" />
                           <span>

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   ShoppingBag, 
   Search, 
@@ -44,10 +44,25 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("Todos");
   
+  // Helper to find Consumidor Final customer
+  const anonCustomer = customers.find(c => c.id.startsWith("cust_anonymous") || c.name.toLowerCase() === "consumidor final");
+  const defaultCustomerId = anonCustomer?.id || "cust_anonymous";
+
   // Checkout details
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>("cust_anonymous");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string>(defaultCustomerId);
   const [paymentMethod, setPaymentMethod] = useState<"contado" | "transferencia" | "cuenta_corriente">("contado");
   const [cashReceived, setCashReceived] = useState<string>("");
+
+  // Sync selectedCustomerId when customers array changes or initial load
+  useEffect(() => {
+    if (customers.length > 0) {
+      const exists = customers.some(c => c.id === selectedCustomerId);
+      if (!exists) {
+        const found = customers.find(c => c.id.startsWith("cust_anonymous") || c.name.toLowerCase() === "consumidor final");
+        setSelectedCustomerId(found ? found.id : customers[0].id);
+      }
+    }
+  }, [customers]);
 
   // Transaction feedback
   const [loading, setLoading] = useState(false);
@@ -113,6 +128,12 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.product.price * item.quantity), 0);
 
+  const selectedCustomer = customers.find(c => c.id === selectedCustomerId) ||
+    customers.find(c => c.id.startsWith("cust_anonymous") || c.name.toLowerCase() === "consumidor final");
+
+  const isAnonymousSelected = selectedCustomerId.startsWith("cust_anonymous") ||
+    selectedCustomer?.name.toLowerCase() === "consumidor final";
+
   // Form submit handler
   const handleCheckoutSubmit = async () => {
     if (cart.length === 0) {
@@ -120,7 +141,7 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
       return;
     }
 
-    if (selectedCustomerId === "cust_anonymous" && paymentMethod === "cuenta_corriente") {
+    if (isAnonymousSelected && paymentMethod === "cuenta_corriente") {
       setError("No se permite comprar a Cuenta Corriente con el Consumidor Final.");
       return;
     }
@@ -129,8 +150,9 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
     setError("");
 
     try {
+      const effectiveCustId = selectedCustomer ? selectedCustomer.id : selectedCustomerId;
       const saleData = {
-        customerId: selectedCustomerId,
+        customerId: effectiveCustId,
         items: cart.map(item => ({
           productId: item.product.id,
           quantity: item.quantity
@@ -153,8 +175,6 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
     }
   };
 
-  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
-
   // Calculate change for cash payment
   const numericCash = Number(cashReceived);
   const changeDue = (!isNaN(numericCash) && numericCash >= cartTotal) ? (numericCash - cartTotal) : 0;
@@ -162,7 +182,8 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
   // View transition when completed
   const handleReset = () => {
     setSuccessData(null);
-    setSelectedCustomerId("cust_anonymous");
+    const foundAnon = customers.find(c => c.id.startsWith("cust_anonymous") || c.name.toLowerCase() === "consumidor final");
+    setSelectedCustomerId(foundAnon ? foundAnon.id : (customers[0]?.id || "cust_anonymous"));
     setPaymentMethod("contado");
     setCashReceived("");
     setCart([]);
@@ -185,7 +206,7 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
         {/* Invoice Receipt Detail */}
         <div className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-5 mt-6 space-y-4">
           <div className="flex justify-between items-center text-xs font-mono text-slate-400">
-            <span>Ticket: #{invoice.id}</span>
+            <span>Factura Nro: <strong className="text-indigo-600 font-bold">{invoice.invoiceNumber || `#${invoice.id}`}</strong></span>
             <span>{new Date(invoice.date).toLocaleString("es-AR")}</span>
           </div>
 
@@ -431,13 +452,14 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
             >
               {customers.map(c => (
                 <option key={c.id} value={c.id}>
-                  {c.name} {c.id !== "cust_anonymous" && c.debt > 0 ? `(Debe $${c.debt.toLocaleString()})` : ""}
+                  {c.name} {c.dni ? `(DNI: ${c.dni})` : ""} {c.id !== "cust_anonymous" && c.debt > 0 ? `- Debe $${c.debt.toLocaleString()}` : ""}
                 </option>
               ))}
             </select>
           </div>
           {selectedCustomer && selectedCustomer.id !== "cust_anonymous" && (
             <div className="bg-slate-50 p-2.5 rounded-xl text-[11px] text-slate-500 flex flex-col space-y-0.5 border border-slate-100">
+              {selectedCustomer.dni && <span>DNI: <strong className="text-slate-700">{selectedCustomer.dni}</strong></span>}
               <span>Email: {selectedCustomer.email || "-"}</span>
               <span>Deuda Pendiente: <strong className={selectedCustomer.debt > 0 ? "text-red-500 font-bold" : "text-emerald-500"}>${selectedCustomer.debt.toLocaleString()}</strong></span>
             </div>
