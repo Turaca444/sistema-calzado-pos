@@ -91,6 +91,10 @@ export default function History({ sales, customers = [], onDeleteSale }: History
         return "bg-red-50 text-red-700 border-red-200/50";
       case "transferencia":
         return "bg-blue-50 text-blue-700 border-blue-200/50";
+      case "tarjeta_debito":
+        return "bg-cyan-50 text-cyan-700 border-cyan-200/50";
+      case "tarjeta_credito":
+        return "bg-purple-50 text-purple-700 border-purple-200/50";
       default:
         return "bg-emerald-50 text-emerald-700 border-emerald-200/50";
     }
@@ -102,6 +106,10 @@ export default function History({ sales, customers = [], onDeleteSale }: History
         return "Cta Corriente";
       case "transferencia":
         return "Transferencia";
+      case "tarjeta_debito":
+        return "Tarjeta Débito";
+      case "tarjeta_credito":
+        return "Tarjeta Crédito";
       default:
         return "Efectivo / Contado";
     }
@@ -362,6 +370,8 @@ export default function History({ sales, customers = [], onDeleteSale }: History
             >
               <option value="Todos">Todos</option>
               <option value="contado">Efectivo / Contado</option>
+              <option value="tarjeta_debito">Tarjeta Débito</option>
+              <option value="tarjeta_credito">Tarjeta Crédito</option>
               <option value="transferencia">Transferencia</option>
               <option value="cuenta_corriente">Cuenta Corriente</option>
             </select>

@@ -129,6 +129,8 @@ export function exportFacturaB(sale: Sale, customer?: Customer) {
     doc.setFont("helvetica", "bold");
     let methodLabel = "Contado (Efectivo)";
     if (sale.paymentMethod === "transferencia") methodLabel = "Transferencia Bancaria";
+    else if (sale.paymentMethod === "tarjeta_debito") methodLabel = "Tarjeta de Débito";
+    else if (sale.paymentMethod === "tarjeta_credito") methodLabel = "Tarjeta de Crédito";
     else if (sale.paymentMethod === "cuenta_corriente") methodLabel = "Cuenta Corriente";
     doc.text(methodLabel, 144, 80);
 

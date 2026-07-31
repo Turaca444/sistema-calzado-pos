@@ -77,6 +77,18 @@ export default function CierreCajaModal({
       .reduce((acc, s) => acc + s.total, 0);
   }, [filteredSales]);
 
+  const debitCardSales = useMemo(() => {
+    return filteredSales
+      .filter((s) => s.paymentMethod === "tarjeta_debito")
+      .reduce((acc, s) => acc + s.total, 0);
+  }, [filteredSales]);
+
+  const creditCardSales = useMemo(() => {
+    return filteredSales
+      .filter((s) => s.paymentMethod === "tarjeta_credito")
+      .reduce((acc, s) => acc + s.total, 0);
+  }, [filteredSales]);
+
   const transferSales = useMemo(() => {
     return filteredSales
       .filter((s) => s.paymentMethod === "transferencia")
@@ -89,7 +101,7 @@ export default function CierreCajaModal({
       .reduce((acc, s) => acc + s.total, 0);
   }, [filteredSales]);
 
-  const totalSalesRevenue = cashSales + transferSales + creditSales;
+  const totalSalesRevenue = cashSales + debitCardSales + creditCardSales + transferSales + creditSales;
 
   // Total items sold count
   const totalItemsSold = useMemo(() => {
@@ -105,6 +117,8 @@ export default function CierreCajaModal({
         name: string;
         count: number;
         cash: number;
+        debitCard: number;
+        creditCard: number;
         transfer: number;
         credit: number;
         total: number;
@@ -115,11 +129,13 @@ export default function CierreCajaModal({
       const key = s.userId || s.userName || "Vendedor General";
       const name = s.userName || "Vendedor General";
       if (!map[key]) {
-        map[key] = { name, count: 0, cash: 0, transfer: 0, credit: 0, total: 0 };
+        map[key] = { name, count: 0, cash: 0, debitCard: 0, creditCard: 0, transfer: 0, credit: 0, total: 0 };
       }
       map[key].count += 1;
       map[key].total += s.total;
       if (s.paymentMethod === "contado") map[key].cash += s.total;
+      else if (s.paymentMethod === "tarjeta_debito") map[key].debitCard += s.total;
+      else if (s.paymentMethod === "tarjeta_credito") map[key].creditCard += s.total;
       else if (s.paymentMethod === "transferencia") map[key].transfer += s.total;
       else if (s.paymentMethod === "cuenta_corriente") map[key].credit += s.total;
     });
@@ -232,6 +248,18 @@ export default function CierreCajaModal({
             totalSalesRevenue > 0 ? `${((cashSales / totalSalesRevenue) * 100).toFixed(1)}%` : "0%"
           ],
           [
+            "Tarjeta de Débito",
+            `${filteredSales.filter((s) => s.paymentMethod === "tarjeta_debito").length} ventas`,
+            `$${debitCardSales.toLocaleString("es-AR")}`,
+            totalSalesRevenue > 0 ? `${((debitCardSales / totalSalesRevenue) * 100).toFixed(1)}%` : "0%"
+          ],
+          [
+            "Tarjeta de Crédito",
+            `${filteredSales.filter((s) => s.paymentMethod === "tarjeta_credito").length} ventas`,
+            `$${creditCardSales.toLocaleString("es-AR")}`,
+            totalSalesRevenue > 0 ? `${((creditCardSales / totalSalesRevenue) * 100).toFixed(1)}%` : "0%"
+          ],
+          [
             "Transferencia / MercadoPago / QR",
             `${filteredSales.filter((s) => s.paymentMethod === "transferencia").length} ventas`,
             `$${transferSales.toLocaleString("es-AR")}`,
@@ -278,6 +306,7 @@ export default function CierreCajaModal({
           sb.name,
           `${sb.count} vtas`,
           `$${sb.cash.toLocaleString("es-AR")}`,
+          `$${(sb.debitCard + sb.creditCard).toLocaleString("es-AR")}`,
           `$${sb.transfer.toLocaleString("es-AR")}`,
           `$${sb.credit.toLocaleString("es-AR")}`,
           `$${sb.total.toLocaleString("es-AR")}`
@@ -286,18 +315,19 @@ export default function CierreCajaModal({
         autoTable(doc, {
           startY: currentY,
           margin: { left: 14, right: 14 },
-          head: [["Vendedor", "Tickets", "Efectivo", "Transfer.", "Cta. Cte.", "Total Recaudado"]],
+          head: [["Vendedor", "Tickets", "Efectivo", "Tarjetas", "Transfer.", "Cta. Cte.", "Total Recaudado"]],
           body: sellerRows,
           theme: "grid",
           headStyles: { fillColor: [51, 65, 85], textColor: [255, 255, 255] },
-          bodyStyles: { fontSize: 8 },
+          bodyStyles: { fontSize: 7.5 },
           columnStyles: {
             0: { fontStyle: "bold" },
             1: { halign: "center" },
             2: { halign: "right" },
             3: { halign: "right" },
             4: { halign: "right" },
-            5: { halign: "right", fontStyle: "bold" }
+            5: { halign: "right" },
+            6: { halign: "right", fontStyle: "bold" }
           }
         });
 
@@ -343,6 +373,8 @@ export default function CierreCajaModal({
       initialCash: numInitial,
       cashSales,
       transferSales,
+      debitCardSales,
+      creditCardSales,
       creditSales,
       totalSales: totalSalesRevenue,
       expenses: numExpenses,
@@ -426,60 +458,88 @@ export default function CierreCajaModal({
         <div className="p-5 sm:p-6 space-y-6 overflow-y-auto flex-1 bg-slate-50/50">
 
           {/* Top Summary Cards Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             {/* Total Sales Card */}
-            <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-1">
+            <div className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-xs space-y-1">
               <div className="flex items-center justify-between text-slate-500">
-                <span className="text-[10px] font-black uppercase tracking-wider">Total Facturado</span>
-                <TrendingUp className="h-4 w-4 text-indigo-600" />
+                <span className="text-[9.5px] font-black uppercase tracking-wider">Total Facturado</span>
+                <TrendingUp className="h-3.5 w-3.5 text-indigo-600" />
               </div>
-              <div className="text-xl font-black text-slate-900 font-mono">
+              <div className="text-lg font-black text-slate-900 font-mono">
                 ${totalSalesRevenue.toLocaleString("es-AR")}
               </div>
-              <div className="text-[10px] text-slate-500 font-medium">
-                {filteredSales.length} ventas ({totalItemsSold} artículos)
+              <div className="text-[9.5px] text-slate-500 font-medium">
+                {filteredSales.length} vtas ({totalItemsSold} arts)
               </div>
             </div>
 
             {/* Cash Sales Card */}
-            <div className="p-4 bg-white rounded-2xl border border-emerald-200/80 shadow-xs space-y-1">
+            <div className="p-3.5 bg-white rounded-2xl border border-emerald-200/80 shadow-xs space-y-1">
               <div className="flex items-center justify-between text-emerald-700">
-                <span className="text-[10px] font-black uppercase tracking-wider">Efectivo en Caja</span>
-                <DollarSign className="h-4 w-4 text-emerald-600" />
+                <span className="text-[9.5px] font-black uppercase tracking-wider">Efectivo</span>
+                <DollarSign className="h-3.5 w-3.5 text-emerald-600" />
               </div>
-              <div className="text-xl font-black text-emerald-700 font-mono">
+              <div className="text-lg font-black text-emerald-700 font-mono">
                 ${cashSales.toLocaleString("es-AR")}
               </div>
-              <div className="text-[10px] text-emerald-600 font-medium">
-                {filteredSales.filter((s) => s.paymentMethod === "contado").length} cobro(s) contado
+              <div className="text-[9.5px] text-emerald-600 font-medium">
+                {filteredSales.filter((s) => s.paymentMethod === "contado").length} vtas contado
+              </div>
+            </div>
+
+            {/* Debit Card Card */}
+            <div className="p-3.5 bg-white rounded-2xl border border-cyan-200/80 shadow-xs space-y-1">
+              <div className="flex items-center justify-between text-cyan-700">
+                <span className="text-[9.5px] font-black uppercase tracking-wider">T. Débito</span>
+                <CreditCard className="h-3.5 w-3.5 text-cyan-600" />
+              </div>
+              <div className="text-lg font-black text-cyan-700 font-mono">
+                ${debitCardSales.toLocaleString("es-AR")}
+              </div>
+              <div className="text-[9.5px] text-cyan-600 font-medium">
+                {filteredSales.filter((s) => s.paymentMethod === "tarjeta_debito").length} vtas débito
+              </div>
+            </div>
+
+            {/* Credit Card Card */}
+            <div className="p-3.5 bg-white rounded-2xl border border-purple-200/80 shadow-xs space-y-1">
+              <div className="flex items-center justify-between text-purple-700">
+                <span className="text-[9.5px] font-black uppercase tracking-wider">T. Crédito</span>
+                <CreditCard className="h-3.5 w-3.5 text-purple-600" />
+              </div>
+              <div className="text-lg font-black text-purple-700 font-mono">
+                ${creditCardSales.toLocaleString("es-AR")}
+              </div>
+              <div className="text-[9.5px] text-purple-600 font-medium">
+                {filteredSales.filter((s) => s.paymentMethod === "tarjeta_credito").length} vtas crédito
               </div>
             </div>
 
             {/* Transfer Sales Card */}
-            <div className="p-4 bg-white rounded-2xl border border-indigo-200/80 shadow-xs space-y-1">
+            <div className="p-3.5 bg-white rounded-2xl border border-indigo-200/80 shadow-xs space-y-1">
               <div className="flex items-center justify-between text-indigo-700">
-                <span className="text-[10px] font-black uppercase tracking-wider">Transferencias / MP</span>
-                <CreditCard className="h-4 w-4 text-indigo-600" />
+                <span className="text-[9.5px] font-black uppercase tracking-wider">Transferencias</span>
+                <CreditCard className="h-3.5 w-3.5 text-indigo-600" />
               </div>
-              <div className="text-xl font-black text-indigo-700 font-mono">
+              <div className="text-lg font-black text-indigo-700 font-mono">
                 ${transferSales.toLocaleString("es-AR")}
               </div>
-              <div className="text-[10px] text-indigo-600 font-medium">
-                {filteredSales.filter((s) => s.paymentMethod === "transferencia").length} cobro(s) digitales
+              <div className="text-[9.5px] text-indigo-600 font-medium">
+                {filteredSales.filter((s) => s.paymentMethod === "transferencia").length} vtas digital
               </div>
             </div>
 
             {/* Credit / Fiado Card */}
-            <div className="p-4 bg-white rounded-2xl border border-amber-200/80 shadow-xs space-y-1">
+            <div className="p-3.5 bg-white rounded-2xl border border-amber-200/80 shadow-xs space-y-1">
               <div className="flex items-center justify-between text-amber-800">
-                <span className="text-[10px] font-black uppercase tracking-wider">Cta. Corriente (Fiado)</span>
-                <Receipt className="h-4 w-4 text-amber-600" />
+                <span className="text-[9.5px] font-black uppercase tracking-wider">Cta. Corriente</span>
+                <Receipt className="h-3.5 w-3.5 text-amber-600" />
               </div>
-              <div className="text-xl font-black text-amber-800 font-mono">
+              <div className="text-lg font-black text-amber-800 font-mono">
                 ${creditSales.toLocaleString("es-AR")}
               </div>
-              <div className="text-[10px] text-amber-700 font-medium">
-                {filteredSales.filter((s) => s.paymentMethod === "cuenta_corriente").length} fiado(s) acumulados
+              <div className="text-[9.5px] text-amber-700 font-medium">
+                {filteredSales.filter((s) => s.paymentMethod === "cuenta_corriente").length} vtas fiado
               </div>
             </div>
           </div>

@@ -824,7 +824,7 @@ app.post("/api/sales", (req, res) => {
     return res.status(400).json({ error: "Debe incluir al menos un producto en la venta" });
   }
 
-  if (!paymentMethod || !["contado", "transferencia", "cuenta_corriente"].includes(paymentMethod)) {
+  if (!paymentMethod || !["contado", "transferencia", "cuenta_corriente", "tarjeta_debito", "tarjeta_credito"].includes(paymentMethod)) {
     return res.status(400).json({ error: "Método de pago inválido" });
   }
 
@@ -1045,6 +1045,8 @@ app.post("/api/daily-closings", (req, res) => {
     initialCash,
     cashSales,
     transferSales,
+    debitCardSales,
+    creditCardSales,
     creditSales,
     totalSales,
     expenses,
@@ -1064,6 +1066,8 @@ app.post("/api/daily-closings", (req, res) => {
     initialCash: Number(initialCash) || 0,
     cashSales: Number(cashSales) || 0,
     transferSales: Number(transferSales) || 0,
+    debitCardSales: Number(debitCardSales) || 0,
+    creditCardSales: Number(creditCardSales) || 0,
     creditSales: Number(creditSales) || 0,
     totalSales: Number(totalSales) || 0,
     expenses: Number(expenses) || 0,

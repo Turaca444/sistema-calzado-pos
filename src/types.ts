@@ -73,7 +73,7 @@ export interface Sale {
   customerName: string;
   items: SaleItem[];
   total: number;
-  paymentMethod: "contado" | "transferencia" | "cuenta_corriente";
+  paymentMethod: "contado" | "transferencia" | "cuenta_corriente" | "tarjeta_debito" | "tarjeta_credito";
   status: "pagado" | "pendiente" | "parcialmente_pagado";
   debtAmount: number;
   userId?: string;
@@ -102,6 +102,8 @@ export interface DailyClosing {
   initialCash: number;
   cashSales: number;
   transferSales: number;
+  debitCardSales?: number;
+  creditCardSales?: number;
   creditSales: number;
   totalSales: number;
   expenses: number;

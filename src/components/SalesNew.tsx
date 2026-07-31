@@ -23,7 +23,7 @@ interface SalesNewProps {
   onAddSale: (saleData: {
     customerId: string;
     items: { productId: string; quantity: number }[];
-    paymentMethod: "contado" | "transferencia" | "cuenta_corriente";
+    paymentMethod: "contado" | "transferencia" | "cuenta_corriente" | "tarjeta_debito" | "tarjeta_credito";
   }) => Promise<{
     message: string;
     sale: any;
@@ -50,7 +50,7 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
 
   // Checkout details
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>(defaultCustomerId);
-  const [paymentMethod, setPaymentMethod] = useState<"contado" | "transferencia" | "cuenta_corriente">("contado");
+  const [paymentMethod, setPaymentMethod] = useState<"contado" | "transferencia" | "cuenta_corriente" | "tarjeta_debito" | "tarjeta_credito">("contado");
   const [cashReceived, setCashReceived] = useState<string>("");
 
   // Sync selectedCustomerId when customers array changes or initial load
@@ -469,32 +469,60 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
         {/* 2. Select Payment Method */}
         <div className="space-y-3">
           <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide">Forma de Pago *</label>
-          <div className="grid grid-cols-3 gap-2.5">
-            {/* Contado */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {/* Contado / Efectivo */}
             <button
               type="button"
               onClick={() => setPaymentMethod("contado")}
-              className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
+              className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
                 paymentMethod === "contado"
                   ? "bg-emerald-50 text-emerald-800 border-emerald-500 shadow-sm"
                   : "bg-white border-slate-200 text-slate-500 hover:text-slate-800"
               }`}
             >
-              <DollarSign className="h-4.5 w-4.5 mb-1 shrink-0" />
-              <span className="text-[10px] font-bold">Contado</span>
+              <DollarSign className="h-4 w-4 mb-1 shrink-0 text-emerald-600" />
+              <span className="text-[10px] font-bold">Efectivo</span>
+            </button>
+
+            {/* Tarjeta Débito */}
+            <button
+              type="button"
+              onClick={() => setPaymentMethod("tarjeta_debito")}
+              className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
+                paymentMethod === "tarjeta_debito"
+                  ? "bg-cyan-50 text-cyan-800 border-cyan-500 shadow-sm"
+                  : "bg-white border-slate-200 text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <CreditCard className="h-4 w-4 mb-1 shrink-0 text-cyan-600" />
+              <span className="text-[10px] font-bold">T. Débito</span>
+            </button>
+
+            {/* Tarjeta Crédito */}
+            <button
+              type="button"
+              onClick={() => setPaymentMethod("tarjeta_credito")}
+              className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
+                paymentMethod === "tarjeta_credito"
+                  ? "bg-purple-50 text-purple-800 border-purple-500 shadow-sm"
+                  : "bg-white border-slate-200 text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <CreditCard className="h-4 w-4 mb-1 shrink-0 text-purple-600" />
+              <span className="text-[10px] font-bold">T. Crédito</span>
             </button>
 
             {/* Transferencia */}
             <button
               type="button"
               onClick={() => setPaymentMethod("transferencia")}
-              className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
+              className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
                 paymentMethod === "transferencia"
                   ? "bg-blue-50 text-blue-800 border-blue-500 shadow-sm"
                   : "bg-white border-slate-200 text-slate-500 hover:text-slate-800"
               }`}
             >
-              <CreditCard className="h-4.5 w-4.5 mb-1 shrink-0" />
+              <CreditCard className="h-4 w-4 mb-1 shrink-0 text-blue-600" />
               <span className="text-[10px] font-bold">Transferencia</span>
             </button>
 
@@ -503,7 +531,7 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
               type="button"
               disabled={selectedCustomerId === "cust_anonymous"}
               onClick={() => setPaymentMethod("cuenta_corriente")}
-              className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center transition-all ${
+              className={`p-2.5 rounded-xl border flex flex-col items-center justify-center text-center transition-all col-span-2 sm:col-span-1 ${
                 selectedCustomerId === "cust_anonymous"
                   ? "opacity-45 bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"
                   : paymentMethod === "cuenta_corriente"
@@ -512,7 +540,7 @@ export default function SalesNew({ products, customers, onAddSale, setView }: Sa
               }`}
               title={selectedCustomerId === "cust_anonymous" ? "El Consumidor Final no puede usar cuenta corriente" : "Comprar al fiado / cargar saldo"}
             >
-              <FileText className="h-4.5 w-4.5 mb-1 shrink-0" />
+              <FileText className="h-4 w-4 mb-1 shrink-0 text-red-500" />
               <span className="text-[10px] font-bold">Cta. Cte (Debe)</span>
             </button>
           </div>
