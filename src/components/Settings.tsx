@@ -204,21 +204,10 @@ export default function Settings({
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Administrá los datos del negocio, cobros por QR, usuarios de caja, respaldos y alertas de seguridad.
+              Administrá los datos del negocio, cobros por QR, usuarios de caja, respaldos y auditoría.
             </p>
           </div>
         </div>
-
-        {/* Quick Scam Alert button */}
-        {onOpenScamAlert && (
-          <button
-            onClick={onOpenScamAlert}
-            className="px-4 py-2.5 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-extrabold text-xs rounded-xl shadow-md transition-all flex items-center space-x-2 cursor-pointer shrink-0 animate-pulse"
-          >
-            <ShieldAlert className="h-4 w-4" />
-            <span>🚨 Alerta de Estafa (Protocolo Caja)</span>
-          </button>
-        )}
       </div>
 
       {/* Navigation Tabs */}
