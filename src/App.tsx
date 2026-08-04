@@ -6,6 +6,7 @@ import Customers from "./components/Customers";
 import SalesNew from "./components/SalesNew";
 import History from "./components/History";
 import UserManual from "./components/UserManual";
+import Settings from "./components/Settings";
 import Login from "./components/Login";
 import { Product, Customer, Sale, Tenant, UserRole, User, LoginLog } from "./types";
 import { 
@@ -687,6 +688,25 @@ export default function App() {
         return <History sales={sales} customers={customers} onDeleteSale={handleDeleteSale} />;
       case "user-manual":
         return <UserManual />;
+      case "settings":
+        return (
+          <Settings
+            activeTenantId={activeTenantId}
+            tenants={tenants}
+            onUpdateTenantName={handleUpdateTenantName}
+            users={users}
+            activeUserId={activeUserId}
+            onUserChange={handleUserChange}
+            onAddUser={handleAddUser}
+            onUpdateUser={handleUpdateUser}
+            onDeleteUser={handleDeleteUser}
+            loginLogs={loginLogs}
+            onClearDatabase={handleClearDatabase}
+            onRestoreDatabase={handleRestoreDatabase}
+            onSeedDemoDatabase={handleSeedDemoDatabase}
+            activeRole={activeRole}
+          />
+        );
       default:
         return (
           <Dashboard 
