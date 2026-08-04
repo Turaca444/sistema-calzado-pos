@@ -551,7 +551,6 @@ export default function Layout({
     { id: "history", label: "Historial", icon: History },
     { id: "user-manual", label: "Manual de Usuario", icon: BookOpen },
     { id: "settings", label: "Configuración", icon: Settings },
-    { id: "scam-alert", label: "Alerta de Estafa", icon: ShieldAlert, isAlert: true },
   ];
 
   // Resolve active tenant details
@@ -733,25 +732,6 @@ export default function Layout({
             const Icon = item.icon;
             const isActive = currentView === item.id;
 
-            if (item.isAlert) {
-              return (
-                <button
-                  key={item.id}
-                  id={`nav-${item.id}`}
-                  onClick={() => setShowScamAlertModal(true)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl transition-all duration-200 text-left bg-gradient-to-r from-red-950/60 to-amber-950/40 text-red-300 hover:text-white border border-red-800/50 hover:border-red-600 my-1 font-bold shadow-xs cursor-pointer group"
-                >
-                  <div className="flex items-center space-x-3">
-                    <Icon className="h-4.5 w-4.5 text-red-400 group-hover:scale-110 transition-transform animate-pulse" />
-                    <span className="text-xs">{item.label}</span>
-                  </div>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-600 text-white font-black animate-pulse">
-                    CAJA
-                  </span>
-                </button>
-              );
-            }
-
             return (
               <button
                 key={item.id}
@@ -861,24 +841,6 @@ export default function Layout({
                 </span>
                 <span className="text-[8.5px] text-emerald-100 font-mono font-bold">
                   Arqueo Diario
-                </span>
-              </div>
-            </button>
-
-            {/* Header Scam / Fraud Alert Button */}
-            <button
-              type="button"
-              onClick={() => setShowScamAlertModal(true)}
-              className="flex items-center space-x-2 px-3 py-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white rounded-xl border border-red-400/50 transition-all text-xs font-black shadow-sm cursor-pointer group animate-pulse"
-              title="Protocolo Anti-Estafa en Caja (Verificación de Transferencias y Comprobantes Falsos)"
-            >
-              <ShieldAlert className="h-4 w-4 text-red-200 group-hover:scale-110 transition-transform" />
-              <div className="hidden sm:flex flex-col text-left leading-none">
-                <span className="text-[10px] font-black text-white flex items-center space-x-1">
-                  <span>Alerta Estafa</span>
-                </span>
-                <span className="text-[8.5px] text-red-100 font-mono font-bold">
-                  Protocolo Caja
                 </span>
               </div>
             </button>
